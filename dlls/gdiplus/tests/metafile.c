@@ -36,6 +36,8 @@ typedef struct emfplus_record
     BOOL  todo;
     ULONG record_type;
     BOOL  playback_todo;
+    void (*playback_fn)(GpMetafile* metafile, EmfPlusRecordType record_type,
+        unsigned int flags, unsigned int dataSize, const unsigned char *pStr);
 } emfplus_record;
 
 typedef struct emfplus_check_state
@@ -205,18 +207,29 @@ static BOOL CALLBACK play_metafile_proc(EmfPlusRecordType record_type, unsigned 
     emfplus_check_state *state = (emfplus_check_state*)userdata;
     GpStatus stat;
 
-    stat = GdipPlayMetafileRecord(state->metafile, record_type, flags, dataSize, pStr);
-
     if (state->expected[state->count].record_type)
     {
-        todo_wine_if (state->expected[state->count].playback_todo)
-            ok(stat == Ok, "%s.%i: GdipPlayMetafileRecord failed with stat %i\n", state->desc, state->count, stat);
+        BOOL match = (state->expected[state->count].record_type == record_type);
+
+        if (match && state->expected[state->count].playback_fn)
+            state->expected[state->count].playback_fn(state->metafile, record_type, flags, dataSize, pStr);
+        else
+        {
+            stat = GdipPlayMetafileRecord(state->metafile, record_type, flags, dataSize, pStr);
+            todo_wine_if (state->expected[state->count].playback_todo)
+                ok(stat == Ok, "%s.%i: GdipPlayMetafileRecord failed with stat %i\n", state->desc, state->count, stat);
+        }
+
+        todo_wine_if (state->expected[state->count].todo)
+            ok(state->expected[state->count].record_type == record_type,
+                "%s.%i: expected record type 0x%x, got 0x%x\n", state->desc, state->count,
+                state->expected[state->count].record_type, record_type);
         state->count++;
     }
     else
     {
         todo_wine_if (state->expected[state->count].playback_todo)
-            ok(0, "%s: too many records\n", state->desc);
+            ok(0, "%s: unexpected record 0x%x\n", state->desc, record_type);
 
         return FALSE;
     }
@@ -360,6 +373,34 @@ static void test_empty(void)
     stat = GdipGetImageVerticalResolution((GpImage*)metafile, &yres);
     expect(Ok, stat);
 
+    memset(&header, 0xaa, sizeof(header));
+    stat = GdipGetMetafileHeaderFromMetafile(metafile, &header);
+    expect(Ok, stat);
+    expect(MetafileTypeEmfPlusOnly, header.Type);
+    expect(U(header).EmfHeader.nBytes, header.Size);
+    ok(header.Version == 0xdbc01001 || header.Version == 0xdbc01002, "Unexpected version %x\n", header.Version);
+    expect(1, header.EmfPlusFlags); /* reference device was display, not printer */
+    expectf(xres, header.DpiX);
+    expectf(xres, U(header).EmfHeader.szlDevice.cx / (REAL)U(header).EmfHeader.szlMillimeters.cx * 25.4);
+    expectf(yres, header.DpiY);
+    expectf(yres, U(header).EmfHeader.szlDevice.cy / (REAL)U(header).EmfHeader.szlMillimeters.cy * 25.4);
+    expect(0, header.X);
+    expect(0, header.Y);
+    expect(100, header.Width);
+    expect(100, header.Height);
+    expect(28, header.EmfPlusHeaderSize);
+    expect(96, header.LogicalDpiX);
+    expect(96, header.LogicalDpiX);
+    expect(EMR_HEADER, U(header).EmfHeader.iType);
+    expect(0, U(header).EmfHeader.rclBounds.left);
+    expect(0, U(header).EmfHeader.rclBounds.top);
+    expect(-1, U(header).EmfHeader.rclBounds.right);
+    expect(-1, U(header).EmfHeader.rclBounds.bottom);
+    expect(0, U(header).EmfHeader.rclFrame.left);
+    expect(0, U(header).EmfHeader.rclFrame.top);
+    expectf_(100.0, U(header).EmfHeader.rclFrame.right * xres / 2540.0, 2.0);
+    expectf_(100.0, U(header).EmfHeader.rclFrame.bottom * yres / 2540.0, 2.0);
+
     stat = GdipGetHemfFromMetafile(metafile, &hemf);
     expect(Ok, stat);
 
@@ -417,6 +458,34 @@ static void test_empty(void)
     stat = GdipGetImageVerticalResolution((GpImage*)metafile, &yres);
     expect(Ok, stat);
     expectf(header.DpiY, yres);
+
+    memset(&header, 0xaa, sizeof(header));
+    stat = GdipGetMetafileHeaderFromMetafile(metafile, &header);
+    expect(Ok, stat);
+    expect(MetafileTypeEmfPlusOnly, header.Type);
+    expect(U(header).EmfHeader.nBytes, header.Size);
+    ok(header.Version == 0xdbc01001 || header.Version == 0xdbc01002, "Unexpected version %x\n", header.Version);
+    expect(1, header.EmfPlusFlags); /* reference device was display, not printer */
+    expectf(xres, header.DpiX);
+    expectf(xres, U(header).EmfHeader.szlDevice.cx / (REAL)U(header).EmfHeader.szlMillimeters.cx * 25.4);
+    expectf(yres, header.DpiY);
+    expectf(yres, U(header).EmfHeader.szlDevice.cy / (REAL)U(header).EmfHeader.szlMillimeters.cy * 25.4);
+    expect(0, header.X);
+    expect(0, header.Y);
+    expect(100, header.Width);
+    expect(100, header.Height);
+    expect(28, header.EmfPlusHeaderSize);
+    expect(96, header.LogicalDpiX);
+    expect(96, header.LogicalDpiX);
+    expect(EMR_HEADER, U(header).EmfHeader.iType);
+    expect(0, U(header).EmfHeader.rclBounds.left);
+    expect(0, U(header).EmfHeader.rclBounds.top);
+    expect(-1, U(header).EmfHeader.rclBounds.right);
+    expect(-1, U(header).EmfHeader.rclBounds.bottom);
+    expect(0, U(header).EmfHeader.rclFrame.left);
+    expect(0, U(header).EmfHeader.rclFrame.top);
+    expectf_(100.0, U(header).EmfHeader.rclFrame.right * xres / 2540.0, 2.0);
+    expectf_(100.0, U(header).EmfHeader.rclFrame.bottom * yres / 2540.0, 2.0);
 
     stat = GdipDisposeImage((GpImage*)metafile);
     expect(Ok, stat);
@@ -603,6 +672,13 @@ static void test_emfonly(void)
     stat = GdipGetHemfFromMetafile(metafile, &hemf);
     expect(InvalidParameter, stat);
 
+    memset(&header, 0xaa, sizeof(header));
+    stat = GdipGetMetafileHeaderFromMetafile(metafile, &header);
+    expect(Ok, stat);
+    expect(MetafileTypeEmf, header.Type);
+    ok(header.Version == 0xdbc01001 || header.Version == 0xdbc01002, "Unexpected version %x\n", header.Version);
+    /* The rest is zeroed or seemingly random/uninitialized garbage. */
+
     stat = GdipGetImageGraphicsContext((GpImage*)metafile, &graphics);
     expect(Ok, stat);
 
@@ -649,6 +725,35 @@ static void test_emfonly(void)
 
     stat = GdipGetImageVerticalResolution((GpImage*)metafile, &yres);
     expect(Ok, stat);
+
+    memset(&header, 0xaa, sizeof(header));
+    stat = GdipGetMetafileHeaderFromMetafile(metafile, &header);
+    expect(Ok, stat);
+    expect(MetafileTypeEmf, header.Type);
+    expect(U(header).EmfHeader.nBytes, header.Size);
+    /* For some reason a recoreded EMF Metafile has an EMF+ version. */
+    todo_wine ok(header.Version == 0xdbc01001 || header.Version == 0xdbc01002, "Unexpected version %x\n", header.Version);
+    expect(0, header.EmfPlusFlags);
+    expectf(xres, header.DpiX);
+    expectf(xres, U(header).EmfHeader.szlDevice.cx / (REAL)U(header).EmfHeader.szlMillimeters.cx * 25.4);
+    expectf(yres, header.DpiY);
+    expectf(yres, U(header).EmfHeader.szlDevice.cy / (REAL)U(header).EmfHeader.szlMillimeters.cy * 25.4);
+    expect(0, header.X);
+    expect(0, header.Y);
+    expect(100, header.Width);
+    expect(100, header.Height);
+    expect(0, header.EmfPlusHeaderSize);
+    expect(0, header.LogicalDpiX);
+    expect(0, header.LogicalDpiX);
+    expect(EMR_HEADER, U(header).EmfHeader.iType);
+    expect(25, U(header).EmfHeader.rclBounds.left);
+    expect(25, U(header).EmfHeader.rclBounds.top);
+    expect(74, U(header).EmfHeader.rclBounds.right);
+    expect(74, U(header).EmfHeader.rclBounds.bottom);
+    expect(0, U(header).EmfHeader.rclFrame.left);
+    expect(0, U(header).EmfHeader.rclFrame.top);
+    expectf_(100.0, U(header).EmfHeader.rclFrame.right * xres / 2540.0, 2.0);
+    expectf_(100.0, U(header).EmfHeader.rclFrame.bottom * yres / 2540.0, 2.0);
 
     stat = GdipCreateBitmapFromScan0(100, 100, 0, PixelFormat32bppARGB, NULL, &bitmap);
     expect(Ok, stat);
@@ -764,6 +869,34 @@ static void test_emfonly(void)
     stat = GdipGetImageVerticalResolution((GpImage*)metafile, &yres);
     expect(Ok, stat);
     expectf(header.DpiY, yres);
+
+    memset(&header, 0xaa, sizeof(header));
+    stat = GdipGetMetafileHeaderFromMetafile(metafile, &header);
+    expect(Ok, stat);
+    expect(MetafileTypeEmf, header.Type);
+    expect(U(header).EmfHeader.nBytes, header.Size);
+    expect(0x10000, header.Version);
+    expect(0, header.EmfPlusFlags);
+    expectf(xres, header.DpiX);
+    expectf(xres, U(header).EmfHeader.szlDevice.cx / (REAL)U(header).EmfHeader.szlMillimeters.cx * 25.4);
+    expectf(yres, header.DpiY);
+    expectf(yres, U(header).EmfHeader.szlDevice.cy / (REAL)U(header).EmfHeader.szlMillimeters.cy * 25.4);
+    expect(0, header.X);
+    expect(0, header.Y);
+    expect(100, header.Width);
+    expect(100, header.Height);
+    expect(0, header.EmfPlusHeaderSize);
+    expect(0, header.LogicalDpiX);
+    expect(0, header.LogicalDpiX);
+    expect(EMR_HEADER, U(header).EmfHeader.iType);
+    expect(25, U(header).EmfHeader.rclBounds.left);
+    expect(25, U(header).EmfHeader.rclBounds.top);
+    expect(74, U(header).EmfHeader.rclBounds.right);
+    expect(74, U(header).EmfHeader.rclBounds.bottom);
+    expect(0, U(header).EmfHeader.rclFrame.left);
+    expect(0, U(header).EmfHeader.rclFrame.top);
+    expectf_(100.0, U(header).EmfHeader.rclFrame.right * xres / 2540.0, 2.0);
+    expectf_(100.0, U(header).EmfHeader.rclFrame.bottom * yres / 2540.0, 2.0);
 
     stat = GdipDisposeImage((GpImage*)metafile);
     expect(Ok, stat);
@@ -1726,6 +1859,9 @@ static const emfplus_record container_records[] = {
     {0, EmfPlusRecordTypeBeginContainerNoParams},
     {0, EmfPlusRecordTypeEndContainer},
     {0, EmfPlusRecordTypeFillRects},
+    {0, EmfPlusRecordTypeBeginContainer},
+    {0, EmfPlusRecordTypeFillRects},
+    {0, EmfPlusRecordTypeEndContainer},
     {0, EmfPlusRecordTypeBeginContainerNoParams},
     {0, EmfPlusRecordTypeEndOfFile},
     {0, EMR_EOF},
@@ -1745,6 +1881,8 @@ static void test_containers(void)
     static const GpPointF dst_points[3] = {{0.0,0.0},{100.0,0.0},{0.0,100.0}};
     static const WCHAR description[] = {'w','i','n','e','t','e','s','t',0};
     GraphicsContainer state1, state2;
+    GpRectF srcrect, dstrect;
+    REAL dpix, dpiy;
 
     hdc = CreateCompatibleDC(0);
 
@@ -1818,6 +1956,41 @@ static void test_containers(void)
     stat = GdipFillRectangle(graphics, brush, 20.0, 20.0, 5.0, 5.0);
     expect(Ok, stat);
 
+    stat = GdipDeleteBrush(brush);
+    expect(Ok, stat);
+
+    /* With transform applied */
+    stat = GdipGetDpiX(graphics, &dpix);
+    expect(Ok, stat);
+
+    stat = GdipGetDpiY(graphics, &dpiy);
+    expect(Ok, stat);
+
+    srcrect.X = 0.0;
+    srcrect.Y = 0.0;
+    srcrect.Width = 1.0;
+    srcrect.Height = 1.0;
+
+    dstrect.X = 25.0;
+    dstrect.Y = 0.0;
+    dstrect.Width = 5.0;
+    dstrect.Height = 5.0;
+
+    stat = GdipBeginContainer(graphics, &dstrect, &srcrect, UnitInch, &state1);
+    expect(Ok, stat);
+
+    stat = GdipCreateSolidFill((ARGB)0xff00ffff, (GpSolidFill**)&brush);
+    expect(Ok, stat);
+
+    stat = GdipFillRectangle(graphics, brush, 0.0, 0.0, dpix, dpiy);
+    expect(Ok, stat);
+
+    stat = GdipDeleteBrush(brush);
+    expect(Ok, stat);
+
+    stat = GdipEndContainer(graphics, state1);
+    expect(Ok, stat);
+
     /* Restoring an invalid state seems to break the graphics object? */
     if (0) {
         stat = GdipEndContainer(graphics, state1);
@@ -1858,6 +2031,10 @@ static void test_containers(void)
     stat = GdipBitmapGetPixel(bitmap, 42, 42, &color);
     expect(Ok, stat);
     expect(0xff00ff00, color);
+
+    stat = GdipBitmapGetPixel(bitmap, 55, 5, &color);
+    expect(Ok, stat);
+    expect(0xff00ffff, color);
 
     stat = GdipDeleteGraphics(graphics);
     expect(Ok, stat);
@@ -1977,6 +2154,124 @@ static void test_clipping(void)
     expect(Ok, stat);
 }
 
+static void test_gditransform_cb(GpMetafile* metafile, EmfPlusRecordType record_type,
+    unsigned int flags, unsigned int dataSize, const unsigned char *pStr)
+{
+    static const XFORM xform = {0.5, 0, 0, 0.5, 0, 0};
+    static const RECTL rectangle = {0,0,100,100};
+    GpStatus stat;
+
+    stat = GdipPlayMetafileRecord(metafile, EMR_SETWORLDTRANSFORM, 0, sizeof(xform), (void*)&xform);
+    expect(Ok, stat);
+
+    stat = GdipPlayMetafileRecord(metafile, EMR_RECTANGLE, 0, sizeof(rectangle), (void*)&rectangle);
+    expect(Ok, stat);
+}
+
+static const emfplus_record gditransform_records[] = {
+    {0, EMR_HEADER},
+    {0, EMR_CREATEBRUSHINDIRECT},
+    {0, EMR_SELECTOBJECT},
+    {0, EMR_GDICOMMENT, 0, test_gditransform_cb},
+    {0, EMR_SELECTOBJECT},
+    {0, EMR_DELETEOBJECT},
+    {0, EMR_EOF},
+    {0}
+};
+
+static void test_gditransform(void)
+{
+    GpStatus stat;
+    GpMetafile *metafile;
+    GpGraphics *graphics;
+    HDC hdc, metafile_dc;
+    HENHMETAFILE hemf;
+    MetafileHeader header;
+    static const GpRectF frame = {0.0, 0.0, 100.0, 100.0};
+    static const GpPointF dst_points[3] = {{0.0,0.0},{40.0,0.0},{0.0,40.0}};
+    static const WCHAR description[] = {'w','i','n','e','t','e','s','t',0};
+    HBRUSH hbrush, holdbrush;
+    GpBitmap *bitmap;
+    ARGB color;
+
+    hdc = CreateCompatibleDC(0);
+
+    stat = GdipRecordMetafile(hdc, EmfTypeEmfOnly, &frame, MetafileFrameUnitPixel, description, &metafile);
+    expect(Ok, stat);
+
+    DeleteDC(hdc);
+
+    if (stat != Ok)
+            return;
+
+    stat = GdipGetHemfFromMetafile(metafile, &hemf);
+    expect(InvalidParameter, stat);
+
+    memset(&header, 0xaa, sizeof(header));
+    stat = GdipGetMetafileHeaderFromMetafile(metafile, &header);
+    expect(Ok, stat);
+    expect(MetafileTypeEmf, header.Type);
+    ok(header.Version == 0xdbc01001 || header.Version == 0xdbc01002, "Unexpected version %x\n", header.Version);
+
+    stat = GdipGetImageGraphicsContext((GpImage*)metafile, &graphics);
+    expect(Ok, stat);
+
+    stat = GdipGetDC(graphics, &metafile_dc);
+    expect(Ok, stat);
+
+    if (stat != Ok)
+    {
+        GdipDeleteGraphics(graphics);
+        GdipDisposeImage((GpImage*)metafile);
+        return;
+    }
+
+    hbrush = CreateSolidBrush(0xff);
+
+    holdbrush = SelectObject(metafile_dc, hbrush);
+
+    GdiComment(metafile_dc, 8, (const BYTE*)"winetest");
+
+    SelectObject(metafile_dc, holdbrush);
+
+    DeleteObject(hbrush);
+
+    stat = GdipReleaseDC(graphics, metafile_dc);
+    expect(Ok, stat);
+
+    stat = GdipDeleteGraphics(graphics);
+    expect(Ok, stat);
+
+    check_metafile(metafile, gditransform_records, "gditransform metafile", dst_points, &frame, UnitPixel);
+
+    sync_metafile(&metafile, "gditransform.emf");
+
+    stat = GdipCreateBitmapFromScan0(100, 100, 0, PixelFormat32bppARGB, NULL, &bitmap);
+    expect(Ok, stat);
+
+    stat = GdipGetImageGraphicsContext((GpImage*)bitmap, &graphics);
+    expect(Ok, stat);
+
+    play_metafile(metafile, graphics, gditransform_records, "gditransform playback", dst_points, &frame, UnitPixel);
+
+    stat = GdipBitmapGetPixel(bitmap, 10, 10, &color);
+    expect(Ok, stat);
+    expect(0xffff0000, color);
+
+    stat = GdipBitmapGetPixel(bitmap, 30, 30, &color);
+    expect(Ok, stat);
+    expect(0x00000000, color);
+
+    stat = GdipDeleteGraphics(graphics);
+    expect(Ok, stat);
+
+    stat = GdipDisposeImage((GpImage*)bitmap);
+    expect(Ok, stat);
+
+    stat = GdipDisposeImage((GpImage*)metafile);
+    expect(Ok, stat);
+}
+
 START_TEST(metafile)
 {
     struct GdiplusStartupInput gdiplusStartupInput;
@@ -2013,6 +2308,7 @@ START_TEST(metafile)
     test_frameunit();
     test_containers();
     test_clipping();
+    test_gditransform();
 
     GdiplusShutdown(gdiplusToken);
 }

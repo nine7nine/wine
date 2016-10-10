@@ -933,6 +933,11 @@ ok(tmp === "1,2,,false,,,a", "arr.toString() = " + tmp);
 tmp = arr.toString("test");
 ok(tmp === "1,2,,false,,,a", "arr.toString() = " + tmp);
 
+arr = ["a", "b"];
+
+tmp = arr.join(String.fromCharCode(0));
+ok(tmp === "a" + String.fromCharCode(0) + "b", "arr.join(String.fromCharCode(0)) = " + tmp);
+
 arr = new Object();
 arr.length = 3;
 arr[0] = "aa";
@@ -2146,11 +2151,21 @@ ok(Date.parse("Tue, 22 Mar 2016 09:57:55 -0300") === Date.parse("Tue, 22 Mar 201
 ok(Date.parse("Tue, 22 Mar 2016 09:57:55 +0400") === Date.parse("Tue, 22 Mar 2016 09:57:55 UTC+0400"),
         "Date.parse(\"Tue, 22 Mar 2016 09:57:55 +0400\") = " + Date.parse("Tue, 22 Mar 2016 09:57:55 +0400"));
 
+tmp = (new Date()).toGMTString();
+ok(tmp.indexOf(String.fromCharCode(0)) == -1, "invalid null byte");
 tmp = (new Date()).toLocaleDateString();
+ok(tmp.indexOf(String.fromCharCode(0)) == -1, "invalid null byte");
+tmp = (new Date(1600, 1, 1, 0, 0, 0, 0)).toLocaleDateString();
+ok(tmp.indexOf(String.fromCharCode(0)) == -1, "invalid null byte");
+tmp = (new Date(1600, 1, 1, 0, 0, 0, 0)).toLocaleString();
 ok(tmp.indexOf(String.fromCharCode(0)) == -1, "invalid null byte");
 tmp = (new Date()).toLocaleTimeString();
 ok(tmp.indexOf(String.fromCharCode(0)) == -1, "invalid null byte");
+tmp = (new Date()).toString();
+ok(tmp.indexOf(String.fromCharCode(0)) == -1, "invalid null byte");
 tmp = (new Date()).toTimeString();
+ok(tmp.indexOf(String.fromCharCode(0)) == -1, "invalid null byte");
+tmp = (new Date()).toUTCString();
 ok(tmp.indexOf(String.fromCharCode(0)) == -1, "invalid null byte");
 
 ok(typeof(Math.PI) === "number", "typeof(Math.PI) = " + typeof(Math.PI));

@@ -584,10 +584,9 @@ typedef _Cnd_t *_Cnd_arg_t;
 
 static HANDLE keyed_event;
 
-int __cdecl _Cnd_init(_Cnd_t *cnd)
+void __cdecl _Cnd_init_in_situ(_Cnd_t cnd)
 {
-    *cnd = MSVCRT_operator_new(sizeof(**cnd));
-    InitializeConditionVariable(&(*cnd)->cv);
+    InitializeConditionVariable(&cnd->cv);
 
     if(!keyed_event) {
         HANDLE event;
@@ -596,7 +595,12 @@ int __cdecl _Cnd_init(_Cnd_t *cnd)
         if(InterlockedCompareExchangePointer(&keyed_event, event, NULL) != NULL)
             NtClose(event);
     }
+}
 
+int __cdecl _Cnd_init(_Cnd_t *cnd)
+{
+    *cnd = MSVCRT_operator_new(sizeof(**cnd));
+    _Cnd_init_in_situ(*cnd);
     return 0;
 }
 
@@ -651,6 +655,11 @@ int __cdecl _Cnd_signal(_Cnd_arg_t cnd)
     return 0;
 }
 
+void __cdecl _Cnd_destroy_in_situ(_Cnd_t cnd)
+{
+    _Cnd_broadcast(CND_T_TO_ARG(cnd));
+}
+
 void __cdecl _Cnd_destroy(_Cnd_arg_t cnd)
 {
     if(cnd) {
@@ -658,6 +667,105 @@ void __cdecl _Cnd_destroy(_Cnd_arg_t cnd)
         MSVCRT_operator_delete(CND_T_FROM_ARG(cnd));
     }
 }
+
+static struct {
+    int used;
+    int size;
+
+    struct _to_broadcast {
+        DWORD thread_id;
+        _Cnd_arg_t cnd;
+        _Mtx_arg_t mtx;
+        int *p;
+    } *to_broadcast;
+} broadcast_at_thread_exit;
+
+static CRITICAL_SECTION broadcast_at_thread_exit_cs;
+static CRITICAL_SECTION_DEBUG broadcast_at_thread_exit_cs_debug =
+{
+        0, 0, &broadcast_at_thread_exit_cs,
+        { &broadcast_at_thread_exit_cs_debug.ProcessLocksList, &broadcast_at_thread_exit_cs_debug.ProcessLocksList },
+        0, 0, { (DWORD_PTR)(__FILE__ ": broadcast_at_thread_exit_cs") }
+};
+static CRITICAL_SECTION broadcast_at_thread_exit_cs = { &broadcast_at_thread_exit_cs_debug, -1, 0, 0, 0, 0 };
+
+void __cdecl _Cnd_register_at_thread_exit(_Cnd_arg_t cnd, _Mtx_arg_t mtx, int *p)
+{
+    struct _to_broadcast *add;
+
+    TRACE("(%p %p %p)\n", cnd, mtx, p);
+
+    EnterCriticalSection(&broadcast_at_thread_exit_cs);
+    if(!broadcast_at_thread_exit.size) {
+        broadcast_at_thread_exit.to_broadcast = HeapAlloc(GetProcessHeap(),
+                0, 8*sizeof(broadcast_at_thread_exit.to_broadcast[0]));
+        if(!broadcast_at_thread_exit.to_broadcast) {
+            LeaveCriticalSection(&broadcast_at_thread_exit_cs);
+            return;
+        }
+        broadcast_at_thread_exit.size = 8;
+    } else if(broadcast_at_thread_exit.size == broadcast_at_thread_exit.used) {
+        add = HeapReAlloc(GetProcessHeap(), 0, broadcast_at_thread_exit.to_broadcast,
+                broadcast_at_thread_exit.size*2*sizeof(broadcast_at_thread_exit.to_broadcast[0]));
+        if(!add) {
+            LeaveCriticalSection(&broadcast_at_thread_exit_cs);
+            return;
+        }
+        broadcast_at_thread_exit.to_broadcast = add;
+        broadcast_at_thread_exit.size *= 2;
+    }
+
+    add = broadcast_at_thread_exit.to_broadcast + broadcast_at_thread_exit.used++;
+    add->thread_id = GetCurrentThreadId();
+    add->cnd = cnd;
+    add->mtx = mtx;
+    add->p = p;
+    LeaveCriticalSection(&broadcast_at_thread_exit_cs);
+}
+
+void __cdecl _Cnd_unregister_at_thread_exit(_Mtx_arg_t mtx)
+{
+    int i;
+
+    TRACE("(%p)\n", mtx);
+
+    EnterCriticalSection(&broadcast_at_thread_exit_cs);
+    for(i=0; i<broadcast_at_thread_exit.used; i++) {
+        if(broadcast_at_thread_exit.to_broadcast[i].mtx != mtx)
+            continue;
+
+        memmove(broadcast_at_thread_exit.to_broadcast+i, broadcast_at_thread_exit.to_broadcast+i+1,
+                (broadcast_at_thread_exit.used-i-1)*sizeof(broadcast_at_thread_exit.to_broadcast[0]));
+        broadcast_at_thread_exit.used--;
+        i--;
+    }
+    LeaveCriticalSection(&broadcast_at_thread_exit_cs);
+}
+
+void __cdecl _Cnd_do_broadcast_at_thread_exit(void)
+{
+    int i, id = GetCurrentThreadId();
+
+    TRACE("()\n");
+
+    EnterCriticalSection(&broadcast_at_thread_exit_cs);
+    for(i=0; i<broadcast_at_thread_exit.used; i++) {
+        if(broadcast_at_thread_exit.to_broadcast[i].thread_id != id)
+            continue;
+
+        _Mtx_unlock(broadcast_at_thread_exit.to_broadcast[i].mtx);
+        _Cnd_broadcast(broadcast_at_thread_exit.to_broadcast[i].cnd);
+        if(broadcast_at_thread_exit.to_broadcast[i].p)
+            *broadcast_at_thread_exit.to_broadcast[i].p = 1;
+
+        memmove(broadcast_at_thread_exit.to_broadcast+i, broadcast_at_thread_exit.to_broadcast+i+1,
+                (broadcast_at_thread_exit.used-i-1)*sizeof(broadcast_at_thread_exit.to_broadcast[0]));
+        broadcast_at_thread_exit.used--;
+        i--;
+    }
+    LeaveCriticalSection(&broadcast_at_thread_exit_cs);
+}
+
 #endif
 
 #if _MSVCP_VER == 100
@@ -988,6 +1096,12 @@ unsigned int __cdecl _Thrd_hardware_concurrency(void)
     return val;
 }
 
+unsigned int __cdecl _Thrd_id(void)
+{
+    TRACE("()\n");
+    return GetCurrentThreadId();
+}
+
 /* ??0_Pad@std@@QAE@XZ */
 /* ??0_Pad@std@@QEAA@XZ */
 DEFINE_THISCALL_WRAPPER(_Pad_ctor, 4)
@@ -1152,6 +1266,13 @@ HANDLE CDECL MSVCP__crtCreateSemaphoreExW(
     return CreateSemaphoreExW(attribs, initial_count, max_count, name, flags, access);
 }
 
+/* ?_Execute_once@std@@YAHAAUonce_flag@1@P6GHPAX1PAPAX@Z1@Z */
+/* ?_Execute_once@std@@YAHAEAUonce_flag@1@P6AHPEAX1PEAPEAX@Z1@Z */
+BOOL __cdecl _Execute_once(INIT_ONCE *flag, PINIT_ONCE_FN func, void *param)
+{
+    return InitOnceExecuteOnce(flag, func, param, NULL);
+}
+
 void init_misc(void *base)
 {
 #ifdef __x86_64__
@@ -1178,6 +1299,7 @@ void free_misc(void)
 #if _MSVCP_VER >= 110
     if(keyed_event)
         NtClose(keyed_event);
+    HeapFree(GetProcessHeap(), 0, broadcast_at_thread_exit.to_broadcast);
 #endif
 }
 

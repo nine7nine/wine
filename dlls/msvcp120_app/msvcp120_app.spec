@@ -1876,9 +1876,9 @@
 @ stub -arch=i386 ?date_order@?$time_get@_WV?$istreambuf_iterator@_WU?$char_traits@_W@std@@@std@@@std@@QBE?AW4dateorder@time_base@2@XZ
 @ stub -arch=win64 ?date_order@?$time_get@_WV?$istreambuf_iterator@_WU?$char_traits@_W@std@@@std@@@std@@QEBA?AW4dateorder@time_base@2@XZ
 # extern ?defer_lock@std@@3Udefer_lock_t@1@B
-@ stub -arch=arm ?do_always_noconv@?$codecvt@DDH@std@@MBA_NXZ
-@ stub -arch=i386 ?do_always_noconv@?$codecvt@DDH@std@@MBE_NXZ
-@ stub -arch=win64 ?do_always_noconv@?$codecvt@DDH@std@@MEBA_NXZ
+@ cdecl -arch=arm ?do_always_noconv@?$codecvt@DDH@std@@MBA_NXZ(ptr) msvcp120.?do_always_noconv@?$codecvt@DDH@std@@MBA_NXZ
+@ thiscall -arch=i386 ?do_always_noconv@?$codecvt@DDH@std@@MBE_NXZ(ptr) msvcp120.?do_always_noconv@?$codecvt@DDH@std@@MBE_NXZ
+@ cdecl -arch=win64 ?do_always_noconv@?$codecvt@DDH@std@@MEBA_NXZ(ptr) msvcp120.?do_always_noconv@?$codecvt@DDH@std@@MEBA_NXZ
 @ cdecl -arch=arm ?do_always_noconv@?$codecvt@GDH@std@@MBA_NXZ(ptr) msvcp120.?do_always_noconv@?$codecvt@GDH@std@@MBA_NXZ
 @ thiscall -arch=i386 ?do_always_noconv@?$codecvt@GDH@std@@MBE_NXZ(ptr) msvcp120.?do_always_noconv@?$codecvt@GDH@std@@MBE_NXZ
 @ cdecl -arch=win64 ?do_always_noconv@?$codecvt@GDH@std@@MEBA_NXZ(ptr) msvcp120.?do_always_noconv@?$codecvt@GDH@std@@MEBA_NXZ
@@ -3672,12 +3672,12 @@
 @ cdecl _Call_onceEx(ptr ptr ptr) msvcp120._Call_onceEx
 @ cdecl _Cnd_broadcast(ptr) msvcp120._Cnd_broadcast
 @ cdecl _Cnd_destroy(ptr) msvcp120._Cnd_destroy
-@ stub _Cnd_do_broadcast_at_thread_exit
+@ cdecl _Cnd_do_broadcast_at_thread_exit() msvcp120._Cnd_do_broadcast_at_thread_exit
 @ cdecl _Cnd_init(ptr) msvcp120._Cnd_init
-@ stub _Cnd_register_at_thread_exit
+@ cdecl _Cnd_register_at_thread_exit(ptr ptr ptr) msvcp120._Cnd_register_at_thread_exit
 @ cdecl _Cnd_signal(ptr) msvcp120._Cnd_signal
 @ cdecl _Cnd_timedwait(ptr ptr ptr) msvcp120._Cnd_timedwait
-@ stub _Cnd_unregister_at_thread_exit
+@ cdecl _Cnd_unregister_at_thread_exit(ptr) msvcp120._Cnd_unregister_at_thread_exit
 @ cdecl _Cnd_wait(ptr ptr) msvcp120._Cnd_wait
 @ stub _Cosh
 @ extern _Denorm msvcp120._Denorm

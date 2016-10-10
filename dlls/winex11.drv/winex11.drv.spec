@@ -23,20 +23,14 @@
 @ cdecl EnumDisplayMonitors(long ptr ptr long) X11DRV_EnumDisplayMonitors
 @ cdecl EnumDisplaySettingsEx(ptr long ptr long) X11DRV_EnumDisplaySettingsEx
 @ cdecl GetMonitorInfo(long ptr) X11DRV_GetMonitorInfo
-@ cdecl CountClipboardFormats() X11DRV_CountClipboardFormats
 @ cdecl CreateDesktopWindow(long) X11DRV_CreateDesktopWindow
 @ cdecl CreateWindow(long) X11DRV_CreateWindow
 @ cdecl DestroyWindow(long) X11DRV_DestroyWindow
-@ cdecl EmptyClipboard() X11DRV_EmptyClipboard
-@ cdecl EnumClipboardFormats(long) X11DRV_EnumClipboardFormats
 @ cdecl FlashWindowEx(ptr) X11DRV_FlashWindowEx
-@ cdecl GetClipboardData(long) X11DRV_GetClipboardData
 @ cdecl GetDC(long long long ptr ptr long) X11DRV_GetDC
-@ cdecl IsClipboardFormatAvailable(long) X11DRV_IsClipboardFormatAvailable
 @ cdecl MsgWaitForMultipleObjectsEx(long ptr long long long) X11DRV_MsgWaitForMultipleObjectsEx
 @ cdecl ReleaseDC(long long) X11DRV_ReleaseDC
 @ cdecl ScrollDC(long long long long) X11DRV_ScrollDC
-@ cdecl SetClipboardData(long long long) X11DRV_SetClipboardData
 @ cdecl SetCapture(long long) X11DRV_SetCapture
 @ cdecl SetFocus(long) X11DRV_SetFocus
 @ cdecl SetLayeredWindowAttributes(long long long long) X11DRV_SetLayeredWindowAttributes
@@ -47,6 +41,7 @@
 @ cdecl SetWindowText(long wstr) X11DRV_SetWindowText
 @ cdecl ShowWindow(long long ptr long) X11DRV_ShowWindow
 @ cdecl SysCommand(long long long) X11DRV_SysCommand
+@ cdecl UpdateClipboard() X11DRV_UpdateClipboard
 @ cdecl UpdateLayeredWindow(long ptr ptr) X11DRV_UpdateLayeredWindow
 @ cdecl WindowMessage(long long long long) X11DRV_WindowMessage
 @ cdecl WindowPosChanging(long long long ptr ptr ptr ptr) X11DRV_WindowPosChanging

@@ -111,6 +111,7 @@ static const char * const atom_names[NB_XATOMS - FIRST_XATOM] =
     "SELECTION_DATA",
     "TARGETS",
     "TEXT",
+    "TIMESTAMP",
     "UTF8_STRING",
     "RAW_ASCENT",
     "RAW_DESCENT",
@@ -167,24 +168,11 @@ static const char * const atom_names[NB_XATOMS - FIRST_XATOM] =
     "XdndActionAsk",
     "XdndActionPrivate",
     "XdndSelection",
-    "XdndTarget",
     "XdndTypeList",
     "HTML Format",
-    "WCF_BITMAP",
-    "WCF_DIB",
-    "WCF_DIBV5",
     "WCF_DIF",
-    "WCF_DSPBITMAP",
-    "WCF_DSPENHMETAFILE",
-    "WCF_DSPMETAFILEPICT",
-    "WCF_DSPTEXT",
     "WCF_ENHMETAFILE",
     "WCF_HDROP",
-    "WCF_LOCALE",
-    "WCF_METAFILEPICT",
-    "WCF_OEMTEXT",
-    "WCF_OWNERDISPLAY",
-    "WCF_PALETTE",
     "WCF_PENDATA",
     "WCF_RIFF",
     "WCF_SYLK",
@@ -210,6 +198,9 @@ static inline BOOL ignore_error( Display *display, XErrorEvent *event )
 {
     if ((event->request_code == X_SetInputFocus || event->request_code == X_ChangeWindowAttributes) &&
         (event->error_code == BadMatch || event->error_code == BadWindow)) return TRUE;
+
+    /* the clipboard display interacts with external windows, ignore all errors */
+    if (display == clipboard_display) return TRUE;
 
     /* ignore a number of errors on gdi display caused by creating/destroying windows */
     if (display == gdi_display)
@@ -589,7 +580,6 @@ static BOOL process_attach(void)
     if (use_xkb) use_xkb = XkbUseExtension( gdi_display, NULL, NULL );
 #endif
     X11DRV_InitKeyboard( gdi_display );
-    X11DRV_InitClipboard();
     if (use_xim) use_xim = X11DRV_InitXIM( input_style );
 
     return TRUE;
@@ -605,7 +595,6 @@ void CDECL X11DRV_ThreadDetach(void)
 
     if (data)
     {
-        X11DRV_ResetSelectionOwner();
         if (data->xim) XCloseIM( data->xim );
         if (data->font_set) XFreeFontSet( data->display, data->font_set );
         XCloseDisplay( data->display );

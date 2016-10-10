@@ -195,7 +195,7 @@ static const char *_dump_DIDEVTYPE_value(DWORD dwDevType, DWORD dwVersion)
     } else {
         switch (dwDevType) {
             case DI8DEVCLASS_ALL: return "All devices";
-            case DI8DEVCLASS_POINTER : return "DI8DEVCLASS_POINTER ";
+            case DI8DEVCLASS_POINTER: return "DI8DEVCLASS_POINTER";
             case DI8DEVCLASS_KEYBOARD: return "DI8DEVCLASS_KEYBOARD";
             case DI8DEVCLASS_DEVICE: return "DI8DEVCLASS_DEVICE";
             case DI8DEVCLASS_GAMECTRL: return "DI8DEVCLASS_GAMECTRL";
@@ -393,7 +393,8 @@ static HRESULT WINAPI IDirectInputAImpl_EnumDevices(
     IDirectInputImpl *This = impl_from_IDirectInput7A(iface);
     DIDEVICEINSTANCEA devInstance;
     unsigned int i;
-    int j, r;
+    int j;
+    HRESULT r;
 
     TRACE("(this=%p,0x%04x '%s',%p,%p,0x%04x)\n",
 	  This, dwDevType, _dump_DIDEVTYPE_value(dwDevType, This->dwVersion),

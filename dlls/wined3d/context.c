@@ -266,10 +266,10 @@ static void context_dump_fbo_attachment(const struct wined3d_gl_info *gl_info, G
         {
             gl_info->gl_ops.gl.p_glGetIntegerv(GL_TEXTURE_BINDING_CUBE_MAP, &old_texture);
 
-            glBindTexture(GL_TEXTURE_CUBE_MAP, name);
-            glGetTexLevelParameteriv(face, level, GL_TEXTURE_INTERNAL_FORMAT, &fmt);
-            glGetTexLevelParameteriv(face, level, GL_TEXTURE_WIDTH, &width);
-            glGetTexLevelParameteriv(face, level, GL_TEXTURE_HEIGHT, &height);
+            gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_CUBE_MAP, name);
+            gl_info->gl_ops.gl.p_glGetTexLevelParameteriv(face, level, GL_TEXTURE_INTERNAL_FORMAT, &fmt);
+            gl_info->gl_ops.gl.p_glGetTexLevelParameteriv(face, level, GL_TEXTURE_WIDTH, &width);
+            gl_info->gl_ops.gl.p_glGetTexLevelParameteriv(face, level, GL_TEXTURE_HEIGHT, &height);
 
             tex_target = GL_TEXTURE_CUBE_MAP;
             tex_type_str = "cube";
@@ -287,14 +287,14 @@ static void context_dump_fbo_attachment(const struct wined3d_gl_info *gl_info, G
                 gl_info->gl_ops.gl.p_glGetIntegerv(texture_type[i].binding, &old_texture);
                 while (gl_info->gl_ops.gl.p_glGetError());
 
-                glBindTexture(texture_type[i].target, name);
+                gl_info->gl_ops.gl.p_glBindTexture(texture_type[i].target, name);
                 if (!gl_info->gl_ops.gl.p_glGetError())
                 {
                     tex_target = texture_type[i].target;
                     tex_type_str = texture_type[i].str;
                     break;
                 }
-                glBindTexture(texture_type[i].target, old_texture);
+                gl_info->gl_ops.gl.p_glBindTexture(texture_type[i].target, old_texture);
             }
             if (!tex_type_str)
             {
@@ -302,15 +302,15 @@ static void context_dump_fbo_attachment(const struct wined3d_gl_info *gl_info, G
                 return;
             }
 
-            glGetTexLevelParameteriv(tex_target, level, GL_TEXTURE_INTERNAL_FORMAT, &fmt);
-            glGetTexLevelParameteriv(tex_target, level, GL_TEXTURE_WIDTH, &width);
-            glGetTexLevelParameteriv(tex_target, level, GL_TEXTURE_HEIGHT, &height);
+            gl_info->gl_ops.gl.p_glGetTexLevelParameteriv(tex_target, level, GL_TEXTURE_INTERNAL_FORMAT, &fmt);
+            gl_info->gl_ops.gl.p_glGetTexLevelParameteriv(tex_target, level, GL_TEXTURE_WIDTH, &width);
+            gl_info->gl_ops.gl.p_glGetTexLevelParameteriv(tex_target, level, GL_TEXTURE_HEIGHT, &height);
         }
 
         FIXME("    %s: %s texture %d, %dx%d, format %#x.\n", debug_fboattachment(attachment),
                 tex_type_str, name, width, height, fmt);
 
-        glBindTexture(tex_target, old_texture);
+        gl_info->gl_ops.gl.p_glBindTexture(tex_target, old_texture);
         checkGLcall("Guess texture type");
     }
     else if (type == GL_NONE)
@@ -551,7 +551,7 @@ static struct fbo_entry *context_find_fbo_entry(struct wined3d_context *context,
                 rt_texture = render_targets[i]->container;
                 TRACE("    Color attachment %u: %p format %s, %s %u, %ux%u, %u samples.\n",
                         i, render_targets[i], debug_d3dformat(rt_texture->resource.format->id),
-                        context->fbo_key->rb_namespace & (1 << (i + 1)) ? "renderbuffer" : "texure",
+                        context->fbo_key->rb_namespace & (1 << (i + 1)) ? "renderbuffer" : "texture",
                         context->fbo_key->objects[i + 1].object,
                         wined3d_texture_get_level_pow2_width(rt_texture, render_targets[i]->texture_level),
                         wined3d_texture_get_level_pow2_height(rt_texture, render_targets[i]->texture_level),
@@ -563,7 +563,7 @@ static struct fbo_entry *context_find_fbo_entry(struct wined3d_context *context,
             ds_texture = depth_stencil->container;
             TRACE("    Depth attachment: %p format %s, %s %u, %ux%u, %u samples.\n",
                     depth_stencil, debug_d3dformat(ds_texture->resource.format->id),
-                    context->fbo_key->rb_namespace & (1 << 0) ? "renderbuffer" : "texure",
+                    context->fbo_key->rb_namespace & (1 << 0) ? "renderbuffer" : "texture",
                     context->fbo_key->objects[0].object,
                     wined3d_texture_get_level_pow2_width(ds_texture, depth_stencil->texture_level),
                     wined3d_texture_get_level_pow2_height(ds_texture, depth_stencil->texture_level),
@@ -1069,7 +1069,7 @@ static BOOL context_set_gl_context(struct wined3d_context *ctx)
          * a swapchain, so we can't use the swapchain to get a backup dc. To
          * make this work windowless contexts would need to be handled by the
          * device. */
-        if (ctx->destroyed)
+        if (ctx->destroyed || !swapchain)
         {
             FIXME("Unable to get backup dc for destroyed context %p.\n", ctx);
             context_set_current(NULL);
@@ -1114,18 +1114,18 @@ static void context_restore_gl_context(const struct wined3d_gl_info *gl_info, HD
     }
 }
 
-static void context_update_window(struct wined3d_context *context)
+static void context_update_window(struct wined3d_context *context, HWND win_handle)
 {
-    if (context->win_handle == context->swapchain->win_handle)
+    if (context->win_handle == win_handle)
         return;
 
     TRACE("Updating context %p window from %p to %p.\n",
-            context, context->win_handle, context->swapchain->win_handle);
+            context, context->win_handle, win_handle);
 
     if (context->hdc)
         wined3d_release_dc(context->win_handle, context->hdc);
 
-    context->win_handle = context->swapchain->win_handle;
+    context->win_handle = win_handle;
     context->hdc_is_private = FALSE;
     context->hdc_has_format = FALSE;
     context->needs_set = 1;
@@ -1296,8 +1296,9 @@ BOOL context_set_current(struct wined3d_context *ctx)
         {
             if (wglGetCurrentContext())
             {
+                const struct wined3d_gl_info *gl_info = old->gl_info;
                 TRACE("Flushing context %p before switching to %p.\n", old, ctx);
-                glFlush();
+                gl_info->gl_ops.gl.p_glFlush();
             }
             old->current = 0;
         }
@@ -1316,7 +1317,7 @@ BOOL context_set_current(struct wined3d_context *ctx)
             return FALSE;
         ctx->current = 1;
     }
-    else if(wglGetCurrentContext())
+    else if (wglGetCurrentContext())
     {
         TRACE("Clearing current D3D context.\n");
         if (!wglMakeCurrent(NULL, NULL))
@@ -1353,6 +1354,12 @@ void context_release(struct wined3d_context *context)
             context_restore_gl_context(context->gl_info, context->restore_dc, context->restore_ctx);
             context->restore_ctx = NULL;
             context->restore_dc = NULL;
+        }
+
+        if (context->destroy_delayed)
+        {
+            TRACE("Destroying context %p.\n", context);
+            context_destroy(context->device, context);
         }
     }
 }
@@ -1511,42 +1518,31 @@ static int context_choose_pixel_format(const struct wined3d_device *device, HDC 
 }
 
 /* Context activation is done by the caller. */
-static void bind_dummy_textures(const struct wined3d_device *device, const struct wined3d_context *context)
+void context_bind_dummy_textures(const struct wined3d_device *device, const struct wined3d_context *context)
 {
     const struct wined3d_gl_info *gl_info = context->gl_info;
-    unsigned int i, count = min(MAX_COMBINED_SAMPLERS, gl_info->limits.combined_samplers);
+    unsigned int i;
 
-    for (i = 0; i < count; ++i)
+    for (i = 0; i < gl_info->limits.combined_samplers; ++i)
     {
         GL_EXTCALL(glActiveTexture(GL_TEXTURE0 + i));
         checkGLcall("glActiveTexture");
 
-        gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_2D, device->dummy_texture_2d[i]);
-        checkGLcall("glBindTexture");
+        gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_2D, device->dummy_textures.tex_2d);
 
         if (gl_info->supported[ARB_TEXTURE_RECTANGLE])
-        {
-            gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_RECTANGLE_ARB, device->dummy_texture_rect[i]);
-            checkGLcall("glBindTexture");
-        }
+            gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_RECTANGLE_ARB, device->dummy_textures.tex_rect);
 
         if (gl_info->supported[EXT_TEXTURE3D])
-        {
-            gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_3D, device->dummy_texture_3d[i]);
-            checkGLcall("glBindTexture");
-        }
+            gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_3D, device->dummy_textures.tex_3d);
 
         if (gl_info->supported[ARB_TEXTURE_CUBE_MAP])
-        {
-            gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_CUBE_MAP, device->dummy_texture_cube[i]);
-            checkGLcall("glBindTexture");
-        }
+            gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_CUBE_MAP, device->dummy_textures.tex_cube);
 
         if (gl_info->supported[EXT_TEXTURE_ARRAY])
-        {
-            gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_2D_ARRAY, device->dummy_texture_2d_array[i]);
-            checkGLcall("glBindTexture");
-        }
+            gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_2D_ARRAY, device->dummy_textures.tex_2d_array);
+
+        checkGLcall("Bind dummy textures");
     }
 }
 
@@ -1838,6 +1834,7 @@ struct wined3d_context *context_create(struct wined3d_swapchain *swapchain,
             context_invalidate_state(ret, state);
     }
 
+    ret->device = device;
     ret->swapchain = swapchain;
     ret->current_rt.texture = target;
     ret->current_rt.sub_resource_idx = 0;
@@ -1920,7 +1917,7 @@ struct wined3d_context *context_create(struct wined3d_swapchain *swapchain,
     gl_info->gl_ops.gl.p_glPixelStorei(GL_PACK_ALIGNMENT, device->surface_alignment);
     checkGLcall("glPixelStorei(GL_PACK_ALIGNMENT, device->surface_alignment);");
     gl_info->gl_ops.gl.p_glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    checkGLcall("glPixelStorei(GL_UNPACK_ALIGNMENT, device->surface_alignment);");
+    checkGLcall("glPixelStorei(GL_UNPACK_ALIGNMENT, 1);");
 
     if (gl_info->supported[ARB_VERTEX_BLEND])
     {
@@ -1982,6 +1979,8 @@ struct wined3d_context *context_create(struct wined3d_swapchain *swapchain,
     {
         GL_EXTCALL(glProvokingVertexEXT(GL_FIRST_VERTEX_CONVENTION_EXT));
     }
+    if (gl_info->supported[ARB_CLIP_CONTROL])
+        GL_EXTCALL(glPointParameteri(GL_POINT_SPRITE_COORD_ORIGIN, GL_LOWER_LEFT));
     device->shader_backend->shader_init_context_state(ret);
     ret->shader_update_mask = (1u << WINED3D_SHADER_TYPE_PIXEL)
             | (1u << WINED3D_SHADER_TYPE_VERTEX)
@@ -1993,8 +1992,8 @@ struct wined3d_context *context_create(struct wined3d_swapchain *swapchain,
     /* If this happens to be the first context for the device, dummy textures
      * are not created yet. In that case, they will be created (and bound) by
      * create_dummy_textures right after this context is initialized. */
-    if (device->dummy_texture_2d[0])
-        bind_dummy_textures(device, ret);
+    if (device->dummy_textures.tex_2d)
+        context_bind_dummy_textures(device, ret);
 
     TRACE("Created context %p.\n", ret);
 
@@ -2019,6 +2018,17 @@ void context_destroy(struct wined3d_device *device, struct wined3d_context *cont
     BOOL destroy;
 
     TRACE("Destroying ctx %p\n", context);
+
+    /* We delay destroying a context when it is active. The context_release()
+     * function invokes context_destroy() again while leaving the last level. */
+    if (context->level)
+    {
+        TRACE("Delaying destruction of context %p.\n", context);
+        context->destroy_delayed = 1;
+        /* FIXME: Get rid of a pointer to swapchain from wined3d_context. */
+        context->swapchain = NULL;
+        return;
+    }
 
     if (context->tid == GetCurrentThreadId() || !context->current)
     {
@@ -2272,6 +2282,10 @@ static void SetupForBlit(const struct wined3d_device *device, struct wined3d_con
     gl_info->gl_ops.gl.p_glDisable(GL_CLIP_PLANE5); checkGLcall("glDisable(clip plane 5)");
     context_invalidate_state(context, STATE_RENDER(WINED3D_RS_CLIPPING));
 
+    /* FIXME: Make draw_textured_quad() able to work with a upper left origin. */
+    if (gl_info->supported[ARB_CLIP_CONTROL])
+        GL_EXTCALL(glClipControl(GL_LOWER_LEFT, GL_NEGATIVE_ONE_TO_ONE));
+
     set_blit_dimension(gl_info, rt_size.cx, rt_size.cy);
 
     /* Disable shaders */
@@ -2385,7 +2399,7 @@ void context_bind_texture(struct wined3d_context *context, GLenum target, GLuint
 
     if (old_texture_type != target)
     {
-        const struct wined3d_device *device = context->swapchain->device;
+        const struct wined3d_device *device = context->device;
 
         switch (old_texture_type)
         {
@@ -2393,23 +2407,23 @@ void context_bind_texture(struct wined3d_context *context, GLenum target, GLuint
                 /* nothing to do */
                 break;
             case GL_TEXTURE_2D:
-                gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_2D, device->dummy_texture_2d[unit]);
+                gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_2D, device->dummy_textures.tex_2d);
                 checkGLcall("glBindTexture");
                 break;
             case GL_TEXTURE_2D_ARRAY:
-                gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_2D_ARRAY, device->dummy_texture_2d_array[unit]);
+                gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_2D_ARRAY, device->dummy_textures.tex_2d_array);
                 checkGLcall("glBindTexture");
                 break;
             case GL_TEXTURE_RECTANGLE_ARB:
-                gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_RECTANGLE_ARB, device->dummy_texture_rect[unit]);
+                gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_RECTANGLE_ARB, device->dummy_textures.tex_rect);
                 checkGLcall("glBindTexture");
                 break;
             case GL_TEXTURE_CUBE_MAP:
-                gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_CUBE_MAP, device->dummy_texture_cube[unit]);
+                gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_CUBE_MAP, device->dummy_textures.tex_cube);
                 checkGLcall("glBindTexture");
                 break;
             case GL_TEXTURE_3D:
-                gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_3D, device->dummy_texture_3d[unit]);
+                gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_3D, device->dummy_textures.tex_3d);
                 checkGLcall("glBindTexture");
                 break;
             default:
@@ -2424,11 +2438,16 @@ static void context_set_render_offscreen(struct wined3d_context *context, BOOL o
 {
     if (context->render_offscreen == offscreen) return;
 
-    context_invalidate_state(context, STATE_POINTSPRITECOORDORIGIN);
-    context_invalidate_state(context, STATE_TRANSFORM(WINED3D_TS_PROJECTION));
     context_invalidate_state(context, STATE_VIEWPORT);
     context_invalidate_state(context, STATE_SCISSORRECT);
-    context_invalidate_state(context, STATE_FRONTFACE);
+    if (!context->gl_info->supported[ARB_CLIP_CONTROL])
+    {
+        context_invalidate_state(context, STATE_FRONTFACE);
+        context_invalidate_state(context, STATE_POINTSPRITECOORDORIGIN);
+        context_invalidate_state(context, STATE_TRANSFORM(WINED3D_TS_PROJECTION));
+    }
+    if (context->gl_info->supported[ARB_FRAGMENT_COORD_CONVENTIONS])
+        context_invalidate_state(context, STATE_SHADER(WINED3D_SHADER_TYPE_PIXEL));
     context->render_offscreen = offscreen;
 }
 
@@ -2740,6 +2759,7 @@ void context_state_fb(struct wined3d_context *context, const struct wined3d_stat
         context_apply_draw_buffers(context, rt_mask);
         *cur_mask = rt_mask;
     }
+    context->constant_update_mask |= WINED3D_SHADER_CONST_PS_Y_CORR;
 }
 
 static void context_map_stage(struct wined3d_context *context, DWORD stage, DWORD unit)
@@ -3307,8 +3327,8 @@ static void context_load_shader_resources(struct wined3d_context *context, const
 
 static void context_bind_shader_resources(struct wined3d_context *context, const struct wined3d_state *state)
 {
-    const struct wined3d_device *device = context->swapchain->device;
     const struct wined3d_gl_info *gl_info = context->gl_info;
+    const struct wined3d_device *device = context->device;
     struct wined3d_shader_sampler_map_entry *entry;
     struct wined3d_shader_resource_view *view;
     struct wined3d_sampler *sampler;
@@ -3518,6 +3538,7 @@ static void context_setup_target(struct wined3d_context *context,
 struct wined3d_context *context_acquire(const struct wined3d_device *device, struct wined3d_surface *target)
 {
     struct wined3d_context *current_context = context_get_current();
+    struct wined3d_swapchain *swapchain = NULL;
     struct wined3d_texture *target_texture;
     unsigned int target_sub_resource_idx;
     struct wined3d_context *context;
@@ -3536,7 +3557,7 @@ struct wined3d_context *context_acquire(const struct wined3d_device *device, str
     {
         if (current_context
                 && current_context->current_rt.texture
-                && current_context->swapchain->device == device)
+                && current_context->device == device)
         {
             target_texture = current_context->current_rt.texture;
             target_sub_resource_idx = current_context->current_rt.sub_resource_idx;
@@ -3557,11 +3578,11 @@ struct wined3d_context *context_acquire(const struct wined3d_device *device, str
     {
         context = current_context;
     }
-    else if (target_texture->swapchain)
+    else if ((swapchain = target_texture->swapchain))
     {
         TRACE("Rendering onscreen.\n");
 
-        context = swapchain_get_context(target_texture->swapchain);
+        context = swapchain_get_context(swapchain);
     }
     else
     {
@@ -3569,14 +3590,20 @@ struct wined3d_context *context_acquire(const struct wined3d_device *device, str
 
         /* Stay with the current context if possible. Otherwise use the
          * context for the primary swapchain. */
-        if (current_context && current_context->swapchain->device == device)
+        if (current_context && current_context->device == device)
+        {
             context = current_context;
+        }
         else
-            context = swapchain_get_context(device->swapchains[0]);
+        {
+            swapchain = device->swapchains[0];
+            context = swapchain_get_context(swapchain);
+        }
     }
 
     context_enter(context);
-    context_update_window(context);
+    if (swapchain)
+        context_update_window(context, swapchain->win_handle);
     context_setup_target(context, target_texture, target_sub_resource_idx);
     if (!context->valid) return context;
 

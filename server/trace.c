@@ -3741,18 +3741,17 @@ static void dump_open_clipboard_request( const struct open_clipboard_request *re
 
 static void dump_open_clipboard_reply( const struct open_clipboard_reply *req )
 {
-    fprintf( stderr, " owner=%d", req->owner );
+    fprintf( stderr, " owner=%08x", req->owner );
 }
 
 static void dump_close_clipboard_request( const struct close_clipboard_request *req )
 {
-    fprintf( stderr, " changed=%d", req->changed );
 }
 
 static void dump_close_clipboard_reply( const struct close_clipboard_reply *req )
 {
     fprintf( stderr, " viewer=%08x", req->viewer );
-    fprintf( stderr, ", owner=%d", req->owner );
+    fprintf( stderr, ", owner=%08x", req->owner );
 }
 
 static void dump_set_clipboard_info_request( const struct set_clipboard_info_request *req )
@@ -3774,6 +3773,55 @@ static void dump_empty_clipboard_request( const struct empty_clipboard_request *
 {
 }
 
+static void dump_set_clipboard_data_request( const struct set_clipboard_data_request *req )
+{
+    fprintf( stderr, " format=%08x", req->format );
+    fprintf( stderr, ", lcid=%08x", req->lcid );
+    dump_varargs_bytes( ", data=", cur_size );
+}
+
+static void dump_set_clipboard_data_reply( const struct set_clipboard_data_reply *req )
+{
+    fprintf( stderr, " seqno=%08x", req->seqno );
+}
+
+static void dump_get_clipboard_data_request( const struct get_clipboard_data_request *req )
+{
+    fprintf( stderr, " format=%08x", req->format );
+    fprintf( stderr, ", cached=%d", req->cached );
+    fprintf( stderr, ", seqno=%08x", req->seqno );
+}
+
+static void dump_get_clipboard_data_reply( const struct get_clipboard_data_reply *req )
+{
+    fprintf( stderr, " from=%08x", req->from );
+    fprintf( stderr, ", owner=%08x", req->owner );
+    fprintf( stderr, ", seqno=%08x", req->seqno );
+    fprintf( stderr, ", total=%u", req->total );
+    dump_varargs_bytes( ", data=", cur_size );
+}
+
+static void dump_get_clipboard_formats_request( const struct get_clipboard_formats_request *req )
+{
+    fprintf( stderr, " format=%08x", req->format );
+}
+
+static void dump_get_clipboard_formats_reply( const struct get_clipboard_formats_reply *req )
+{
+    fprintf( stderr, " count=%08x", req->count );
+    dump_varargs_uints( ", formats=", cur_size );
+}
+
+static void dump_enum_clipboard_formats_request( const struct enum_clipboard_formats_request *req )
+{
+    fprintf( stderr, " previous=%08x", req->previous );
+}
+
+static void dump_enum_clipboard_formats_reply( const struct enum_clipboard_formats_reply *req )
+{
+    fprintf( stderr, " format=%08x", req->format );
+}
+
 static void dump_release_clipboard_request( const struct release_clipboard_request *req )
 {
     fprintf( stderr, " owner=%08x", req->owner );
@@ -3782,6 +3830,7 @@ static void dump_release_clipboard_request( const struct release_clipboard_reque
 static void dump_release_clipboard_reply( const struct release_clipboard_reply *req )
 {
     fprintf( stderr, " viewer=%08x", req->viewer );
+    fprintf( stderr, ", owner=%08x", req->owner );
 }
 
 static void dump_get_clipboard_info_request( const struct get_clipboard_info_request *req )
@@ -4645,6 +4694,10 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_close_clipboard_request,
     (dump_func)dump_set_clipboard_info_request,
     (dump_func)dump_empty_clipboard_request,
+    (dump_func)dump_set_clipboard_data_request,
+    (dump_func)dump_get_clipboard_data_request,
+    (dump_func)dump_get_clipboard_formats_request,
+    (dump_func)dump_enum_clipboard_formats_request,
     (dump_func)dump_release_clipboard_request,
     (dump_func)dump_get_clipboard_info_request,
     (dump_func)dump_set_clipboard_viewer_request,
@@ -4928,6 +4981,10 @@ static const dump_func reply_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_close_clipboard_reply,
     (dump_func)dump_set_clipboard_info_reply,
     NULL,
+    (dump_func)dump_set_clipboard_data_reply,
+    (dump_func)dump_get_clipboard_data_reply,
+    (dump_func)dump_get_clipboard_formats_reply,
+    (dump_func)dump_enum_clipboard_formats_reply,
     (dump_func)dump_release_clipboard_reply,
     (dump_func)dump_get_clipboard_info_reply,
     (dump_func)dump_set_clipboard_viewer_reply,
@@ -5211,6 +5268,10 @@ static const char * const req_names[REQ_NB_REQUESTS] = {
     "close_clipboard",
     "set_clipboard_info",
     "empty_clipboard",
+    "set_clipboard_data",
+    "get_clipboard_data",
+    "get_clipboard_formats",
+    "enum_clipboard_formats",
     "release_clipboard",
     "get_clipboard_info",
     "set_clipboard_viewer",

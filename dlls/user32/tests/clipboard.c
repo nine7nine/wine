@@ -105,7 +105,6 @@ static void set_clipboard_data_process( int arg )
     SetLastError( 0xdeadbeef );
     if (arg)
     {
-        todo_wine_if( arg == 1 || arg == 3 )
         ok( IsClipboardFormatAvailable( CF_WAVE ), "process %u: CF_WAVE not available\n", arg );
         ret = SetClipboardData( CF_WAVE, GlobalAlloc( GMEM_DDESHARE | GMEM_ZEROINIT, 100 ));
         ok( ret != 0, "process %u: SetClipboardData failed err %u\n", arg, GetLastError() );
@@ -207,7 +206,7 @@ static LRESULT CALLBACK winproc_wrapper( HWND hwnd, UINT msg, WPARAM wp, LPARAM 
     {
     case WM_DESTROY:
         ok( wm_renderallformats, "didn't receive WM_RENDERALLFORMATS before WM_DESTROY\n" );
-        todo_wine ok( wm_drawclipboard, "didn't receive WM_DRAWCLIPBOARD before WM_DESTROY\n" );
+        ok( wm_drawclipboard, "didn't receive WM_DRAWCLIPBOARD before WM_DESTROY\n" );
         break;
     case WM_DRAWCLIPBOARD:
         ok( msg_flags == ISMEX_NOSEND, "WM_DRAWCLIPBOARD wrong flags %x\n", msg_flags );
@@ -321,7 +320,7 @@ static void test_ClipboardOwner(void)
     ok(!GetClipboardOwner() && GetLastError() == 0xdeadbeef, "clipboard should not be owned\n");
     ok(!GetClipboardViewer() && GetLastError() == 0xdeadbeef, "viewer still exists\n");
     ok(!GetOpenClipboardWindow() && GetLastError() == 0xdeadbeef, "clipboard should not be open\n");
-    todo_wine ok( !IsClipboardFormatAvailable( CF_WAVE ), "CF_WAVE available\n" );
+    ok( !IsClipboardFormatAvailable( CF_WAVE ), "CF_WAVE available\n" );
 
     SetLastError( 0xdeadbeef );
     ret = CloseClipboard();
@@ -416,12 +415,12 @@ todo_wine
     ok(GetLastError() == ERROR_FILE_NOT_FOUND, "err %d\n", GetLastError());
     }
 
-    for (format_id = 0; format_id < 0xffff; format_id++)
+    for (format_id = 0; format_id < 0x10fff; format_id++)
     {
         SetLastError(0xdeadbeef);
         len = GetClipboardFormatNameA(format_id, buf, 256);
 
-        if (format_id < 0xc000)
+        if (format_id < 0xc000 || format_id > 0xffff)
             ok(!len, "GetClipboardFormatNameA should fail, but it returned %d (%s)\n", len, buf);
         else if (len && winetest_debug > 1)
             trace("%04x: %s\n", format_id, len ? buf : "");
@@ -1092,7 +1091,7 @@ static DWORD WINAPI clipboard_thread(void *param)
     if (pGetClipboardSequenceNumber)
     {
         seq = pGetClipboardSequenceNumber();
-        todo_wine ok( (int)(seq - old_seq) == 1, "sequence diff %d\n", seq - old_seq );
+        ok( (int)(seq - old_seq) == 1, "sequence diff %d\n", seq - old_seq );
         old_seq = seq;
     }
     if (!cross_thread)
@@ -1114,7 +1113,7 @@ static DWORD WINAPI clipboard_thread(void *param)
     if (pGetClipboardSequenceNumber)
     {
         seq = pGetClipboardSequenceNumber();
-        todo_wine ok( (int)(seq - old_seq) == 1, "sequence diff %d\n", seq - old_seq );
+        ok( (int)(seq - old_seq) == 1, "sequence diff %d\n", seq - old_seq );
         old_seq = seq;
     }
     if (!cross_thread)
@@ -1136,7 +1135,7 @@ static DWORD WINAPI clipboard_thread(void *param)
     if (pGetClipboardSequenceNumber)
     {
         seq = pGetClipboardSequenceNumber();
-        todo_wine ok( (int)(seq - old_seq) == 1, "sequence diff %d\n", seq - old_seq );
+        ok( (int)(seq - old_seq) == 1, "sequence diff %d\n", seq - old_seq );
         old_seq = seq;
     }
     if (!cross_thread)
@@ -1165,7 +1164,7 @@ static DWORD WINAPI clipboard_thread(void *param)
     if (pGetClipboardSequenceNumber)
     {
         seq = pGetClipboardSequenceNumber();
-        todo_wine ok( (int)(seq - old_seq) == 2, "sequence diff %d\n", seq - old_seq );
+        ok( (int)(seq - old_seq) == 2, "sequence diff %d\n", seq - old_seq );
         old_seq = seq;
     }
     if (!cross_thread)
@@ -1222,7 +1221,7 @@ static DWORD WINAPI clipboard_thread(void *param)
     if (pGetClipboardSequenceNumber)
     {
         seq = pGetClipboardSequenceNumber();
-        todo_wine ok( (int)(seq - old_seq) == 1, "sequence diff %d\n", seq - old_seq );
+        ok( (int)(seq - old_seq) == 1, "sequence diff %d\n", seq - old_seq );
         old_seq = seq;
     }
     if (!cross_thread)
@@ -1245,7 +1244,7 @@ static DWORD WINAPI clipboard_thread(void *param)
     {
         /* no synthesized format, so CloseClipboard doesn't change the sequence */
         seq = pGetClipboardSequenceNumber();
-        todo_wine ok( seq == old_seq, "sequence changed\n" );
+        ok( seq == old_seq, "sequence changed\n" );
         old_seq = seq;
     }
     if (!cross_thread)
@@ -1347,7 +1346,7 @@ static DWORD WINAPI clipboard_thread(void *param)
     if (pGetClipboardSequenceNumber)
     {
         seq = pGetClipboardSequenceNumber();
-        todo_wine ok( seq == old_seq, "sequence changed\n" );
+        ok( seq == old_seq, "sequence changed\n" );
         old_seq = seq;
     }
     if (!cross_thread)
@@ -1395,7 +1394,7 @@ static DWORD WINAPI clipboard_thread(void *param)
     if (pGetClipboardSequenceNumber)
     {
         seq = pGetClipboardSequenceNumber();
-        todo_wine ok( (int)(seq - old_seq) == 1, "sequence diff %d\n", seq - old_seq );
+        ok( (int)(seq - old_seq) == 1, "sequence diff %d\n", seq - old_seq );
         old_seq = seq;
     }
     if (!cross_thread)
@@ -1420,7 +1419,7 @@ static DWORD WINAPI clipboard_thread(void *param)
     if (pGetClipboardSequenceNumber)
     {
         seq = pGetClipboardSequenceNumber();
-        todo_wine ok( seq == old_seq, "sequence changed\n" );
+        ok( seq == old_seq, "sequence changed\n" );
         old_seq = seq;
     }
     if (!cross_thread)
@@ -1442,7 +1441,6 @@ static DWORD WINAPI clipboard_thread(void *param)
     if (pGetClipboardSequenceNumber)
     {
         seq = pGetClipboardSequenceNumber();
-        todo_wine_if (!cross_thread)
         ok( (int)(seq - old_seq) == 2, "sequence diff %d\n", seq - old_seq );
         old_seq = seq;
     }
@@ -1469,7 +1467,7 @@ static DWORD WINAPI clipboard_thread(void *param)
     if (pGetClipboardSequenceNumber)
     {
         seq = pGetClipboardSequenceNumber();
-        todo_wine ok( (int)(seq - old_seq) == 1, "sequence diff %d\n", seq - old_seq );
+        ok( (int)(seq - old_seq) == 1, "sequence diff %d\n", seq - old_seq );
         old_seq = seq;
     }
     if (!cross_thread)
@@ -1494,7 +1492,7 @@ static DWORD WINAPI clipboard_thread(void *param)
     if (pGetClipboardSequenceNumber)
     {
         seq = pGetClipboardSequenceNumber();
-        todo_wine ok( seq == old_seq, "sequence changed\n" );
+        ok( seq == old_seq, "sequence changed\n" );
         old_seq = seq;
     }
     if (!cross_thread)
@@ -1592,21 +1590,23 @@ static BOOL is_fixed( HANDLE handle )
 
 static BOOL is_freed( HANDLE handle )
 {
-    void *ptr = GlobalLock( handle );
-    if (ptr) GlobalUnlock( handle );
-    return !ptr;
+    return !GlobalSize( handle );
 }
 
 static UINT format_id;
 static HBITMAP bitmap, bitmap2;
 static HPALETTE palette;
-static const LOGPALETTE logpalette = { 0x300, 1 };
+static const LOGPALETTE logpalette = { 0x300, 1, {{ 0x12, 0x34, 0x56, 0x78 }}};
 
 static void test_handles( HWND hwnd )
 {
-    HGLOBAL h, htext, htext2, htext3, htext4;
+    HGLOBAL h, htext, htext2, htext3, htext4, htext5;
+    HGLOBAL hfixed, hfixed2, hmoveable, empty_fixed, empty_moveable;
+    void *ptr;
+    UINT format_id2 = RegisterClipboardFormatA( "another format" );
     BOOL r;
     HANDLE data;
+    HBITMAP bitmap_temp;
     DWORD process;
     BOOL is_owner = (GetWindowThreadProcessId( hwnd, &process ) && process == GetCurrentProcessId());
 
@@ -1615,9 +1615,26 @@ static void test_handles( HWND hwnd )
     htext2 = create_textA();
     htext3 = create_textA();
     htext4 = create_textA();
+    htext5 = create_textA();
     bitmap = CreateBitmap( 10, 10, 1, 1, NULL );
     bitmap2 = CreateBitmap( 10, 10, 1, 1, NULL );
     palette = CreatePalette( &logpalette );
+
+    hfixed = GlobalAlloc( GMEM_FIXED, 17 );
+    hfixed2 = GlobalAlloc( GMEM_FIXED, 17 );
+    ok( is_fixed( hfixed ), "expected fixed mem %p\n", hfixed );
+    ok( GlobalSize( hfixed ) == 17, "wrong size %lu\n", GlobalSize( hfixed ));
+
+    hmoveable = GlobalAlloc( GMEM_MOVEABLE, 23 );
+    ok( is_moveable( hmoveable ), "expected moveable mem %p\n", hmoveable );
+    ok( GlobalSize( hmoveable ) == 23, "wrong size %lu\n", GlobalSize( hmoveable ));
+
+    empty_fixed = GlobalAlloc( GMEM_FIXED, 0 );
+    ok( is_fixed( empty_fixed ), "expected fixed mem %p\n", empty_fixed );
+
+    empty_moveable = GlobalAlloc( GMEM_MOVEABLE, 0 );
+    /* discarded handles can't be GlobalLock'ed */
+    ok( is_freed( empty_moveable ), "expected free mem %p\n", empty_moveable );
 
     r = OpenClipboard( hwnd );
     ok( r, "gle %d\n", GetLastError() );
@@ -1630,9 +1647,14 @@ static void test_handles( HWND hwnd )
     h = SetClipboardData( format_id, htext2 );
     ok( h == htext2, "got %p\n", h );
     ok( is_moveable( h ), "expected moveable mem %p\n", h );
+    bitmap_temp = CreateBitmap( 10, 10, 1, 1, NULL );
+    h = SetClipboardData( CF_BITMAP, bitmap_temp );
+    ok( h == bitmap_temp, "got %p\n", h );
+    ok( GetObjectType( h ) == OBJ_BITMAP, "expected bitmap %p\n", h );
     h = SetClipboardData( CF_BITMAP, bitmap );
     ok( h == bitmap, "got %p\n", h );
     ok( GetObjectType( h ) == OBJ_BITMAP, "expected bitmap %p\n", h );
+    ok( !GetObjectType( bitmap_temp ), "expected free object %p\n", bitmap_temp );
     h = SetClipboardData( CF_DSPBITMAP, bitmap2 );
     ok( h == bitmap2, "got %p\n", h );
     ok( GetObjectType( h ) == OBJ_BITMAP, "expected bitmap %p\n", h );
@@ -1642,9 +1664,39 @@ static void test_handles( HWND hwnd )
     h = SetClipboardData( CF_GDIOBJFIRST + 3, htext3 );
     ok( h == htext3, "got %p\n", h );
     ok( is_moveable( h ), "expected moveable mem %p\n", h );
-    h = SetClipboardData( CF_PRIVATEFIRST + 7, htext4 );
-    ok( h == htext4, "got %p\n", h );
+    h = SetClipboardData( CF_PRIVATEFIRST + 7, htext5 );
+    ok( h == htext5, "got %p\n", h );
     ok( is_moveable( h ), "expected moveable mem %p\n", h );
+    h = SetClipboardData( format_id2, empty_moveable );
+    ok( !h, "got %p\n", h );
+    GlobalFree( empty_moveable );
+
+    if (0)  /* crashes on vista64 */
+    {
+        ptr = HeapAlloc( GetProcessHeap(), 0, 0 );
+        h = SetClipboardData( format_id2, ptr );
+        ok( !h, "got %p\n", h );
+        HeapFree( GetProcessHeap(), 0, ptr );
+    }
+
+    h = SetClipboardData( format_id2, empty_fixed );
+    ok( h == empty_fixed, "got %p\n", h );
+    ok( is_fixed( h ), "expected fixed mem %p\n", h );
+    h = SetClipboardData( 0xdeadbeef, hfixed2 );
+    ok( h == hfixed2, "got %p\n", h );
+    ok( is_fixed( h ), "expected fixed mem %p\n", h );
+    h = SetClipboardData( 0xdeadbabe, hmoveable );
+    ok( h == hmoveable, "got %p\n", h );
+    ok( is_moveable( h ), "expected moveable mem %p\n", h );
+
+    ptr = HeapAlloc( GetProcessHeap(), 0, 37 );
+    h = SetClipboardData( 0xdeadfade, ptr );
+    ok( h == ptr || !h, "got %p\n", h );
+    if (!h)  /* heap blocks are rejected on >= win8 */
+    {
+        HeapFree( GetProcessHeap(), 0, ptr );
+        ptr = NULL;
+    }
 
     data = GetClipboardData( CF_TEXT );
     ok( data == htext, "wrong data %p\n", data );
@@ -1659,8 +1711,33 @@ static void test_handles( HWND hwnd )
     ok( is_moveable( data ), "expected moveable mem %p\n", data );
 
     data = GetClipboardData( CF_PRIVATEFIRST + 7 );
-    ok( data == htext4, "wrong data %p\n", data );
+    ok( data == htext5, "wrong data %p\n", data );
     ok( is_moveable( data ), "expected moveable mem %p\n", data );
+
+    data = GetClipboardData( format_id2 );
+    ok( data == empty_fixed, "wrong data %p\n", data );
+    ok( is_fixed( data ), "expected fixed mem %p\n", data );
+
+    data = GetClipboardData( 0xdeadbeef );
+    ok( data == hfixed2, "wrong data %p\n", data );
+    ok( is_fixed( data ), "expected fixed mem %p\n", data );
+
+    data = GetClipboardData( 0xdeadbabe );
+    ok( data == hmoveable, "wrong data %p\n", data );
+    ok( is_moveable( data ), "expected moveable mem %p\n", data );
+
+    data = GetClipboardData( 0xdeadfade );
+    ok( data == ptr, "wrong data %p\n", data );
+
+    h = SetClipboardData( CF_PRIVATEFIRST + 7, htext4 );
+    ok( h == htext4, "got %p\n", h );
+    ok( is_moveable( h ), "expected moveable mem %p\n", h );
+    ok( is_freed( htext5 ), "expected freed mem %p\n", htext5 );
+
+    h = SetClipboardData( 0xdeadbeef, hfixed );
+    ok( h == hfixed, "got %p\n", h );
+    ok( is_fixed( h ), "expected fixed mem %p\n", h );
+    ok( is_freed( hfixed2 ) || broken( !is_freed( hfixed2 )) /* < Vista */, "expected freed mem %p\n", hfixed2 );
 
     r = CloseClipboard();
     ok( r, "gle %d\n", GetLastError() );
@@ -1673,6 +1750,9 @@ static void test_handles( HWND hwnd )
     ok( GetObjectType( bitmap ) == OBJ_BITMAP, "expected bitmap %p\n", bitmap );
     ok( GetObjectType( bitmap2 ) == OBJ_BITMAP, "expected bitmap %p\n", bitmap2 );
     ok( GetObjectType( palette ) == OBJ_PAL, "expected palette %p\n", palette );
+    ok( is_fixed( hfixed ), "expected fixed mem %p\n", hfixed );
+    ok( is_moveable( hmoveable ), "expected moveable mem %p\n", hmoveable );
+    ok( is_fixed( empty_fixed ), "expected fixed mem %p\n", empty_fixed );
 
     r = OpenClipboard( hwnd );
     ok( r, "gle %d\n", GetLastError() );
@@ -1680,22 +1760,39 @@ static void test_handles( HWND hwnd )
     /* and now they are freed, unless we are the owner */
     if (!is_owner)
     {
-        todo_wine ok( is_freed( htext ), "expected freed mem %p\n", htext );
-        todo_wine ok( is_freed( htext2 ), "expected freed mem %p\n", htext2 );
-        todo_wine ok( is_freed( htext3 ), "expected freed mem %p\n", htext3 );
-        todo_wine ok( is_freed( htext4 ), "expected freed mem %p\n", htext4 );
+        ok( is_freed( htext ), "expected freed mem %p\n", htext );
+        ok( is_freed( htext2 ), "expected freed mem %p\n", htext2 );
+        ok( is_freed( htext3 ), "expected freed mem %p\n", htext3 );
+        ok( is_freed( htext4 ), "expected freed mem %p\n", htext4 );
+        ok( is_freed( hmoveable ), "expected freed mem %p\n", hmoveable );
 
         data = GetClipboardData( CF_TEXT );
-        todo_wine ok( is_fixed( data ), "expected fixed mem %p\n", data );
+        ok( is_fixed( data ), "expected fixed mem %p\n", data );
 
         data = GetClipboardData( format_id );
-        todo_wine ok( is_fixed( data ), "expected fixed mem %p\n", data );
+        ok( is_fixed( data ), "expected fixed mem %p\n", data );
 
         data = GetClipboardData( CF_GDIOBJFIRST + 3 );
-        todo_wine ok( is_fixed( data ), "expected fixed mem %p\n", data );
+        ok( is_fixed( data ), "expected fixed mem %p\n", data );
 
         data = GetClipboardData( CF_PRIVATEFIRST + 7 );
-        todo_wine ok( is_fixed( data ), "expected fixed mem %p\n", data );
+        ok( is_fixed( data ), "expected fixed mem %p\n", data );
+
+        data = GetClipboardData( format_id2 );
+        ok( is_fixed( data ), "expected fixed mem %p\n", data );
+        ok( GlobalSize( data ) == 1, "wrong size %lu\n", GlobalSize( data ));
+
+        data = GetClipboardData( 0xdeadbeef );
+        ok( is_fixed( data ), "expected fixed mem %p\n", data );
+        ok( GlobalSize( data ) == 17, "wrong size %lu\n", GlobalSize( data ));
+
+        data = GetClipboardData( 0xdeadbabe );
+        ok( is_fixed( data ), "expected fixed mem %p\n", data );
+        ok( GlobalSize( data ) == 23, "wrong size %lu\n", GlobalSize( data ));
+
+        data = GetClipboardData( 0xdeadfade );
+        ok( is_fixed( data ) || !ptr, "expected fixed mem %p\n", data );
+        if (ptr) ok( GlobalSize( data ) == 37, "wrong size %lu\n", GlobalSize( data ));
     }
     else
     {
@@ -1703,6 +1800,7 @@ static void test_handles( HWND hwnd )
         ok( is_moveable( htext2 ), "expected moveable mem %p\n", htext2 );
         ok( is_moveable( htext3 ), "expected moveable mem %p\n", htext3 );
         ok( is_moveable( htext4 ), "expected moveable mem %p\n", htext4 );
+        ok( is_moveable( hmoveable ), "expected moveable mem %p\n", hmoveable );
 
         data = GetClipboardData( CF_TEXT );
         ok( data == htext, "wrong data %p\n", data );
@@ -1715,6 +1813,18 @@ static void test_handles( HWND hwnd )
 
         data = GetClipboardData( CF_PRIVATEFIRST + 7 );
         ok( data == htext4, "wrong data %p\n", data );
+
+        data = GetClipboardData( format_id2 );
+        ok( data == empty_fixed, "wrong data %p\n", data );
+
+        data = GetClipboardData( 0xdeadbeef );
+        ok( data == hfixed, "wrong data %p\n", data );
+
+        data = GetClipboardData( 0xdeadbabe );
+        ok( data == hmoveable, "wrong data %p\n", data );
+
+        data = GetClipboardData( 0xdeadfade );
+        ok( data == ptr, "wrong data %p\n", data );
     }
 
     data = GetClipboardData( CF_OEMTEXT );
@@ -1737,6 +1847,8 @@ static void test_handles( HWND hwnd )
     ok( GetObjectType( bitmap ) == OBJ_BITMAP, "expected bitmap %p\n", bitmap );
     ok( GetObjectType( bitmap2 ) == OBJ_BITMAP, "expected bitmap %p\n", bitmap2 );
     ok( GetObjectType( palette ) == OBJ_PAL, "expected palette %p\n", palette );
+    ok( is_fixed( hfixed ), "expected fixed mem %p\n", hfixed );
+    ok( is_fixed( empty_fixed ), "expected fixed mem %p\n", empty_fixed );
 
     r = EmptyClipboard();
     ok( r, "gle %d\n", GetLastError() );
@@ -1746,6 +1858,9 @@ static void test_handles( HWND hwnd )
     ok( is_freed( htext2 ) || broken( !is_freed( htext2 )), "expected freed mem %p\n", htext2 );
     ok( is_freed( htext3 ) || broken( !is_freed( htext3 )), "expected freed mem %p\n", htext3 );
     ok( is_freed( htext4 ) || broken( !is_freed( htext4 )), "expected freed mem %p\n", htext4 );
+    ok( is_freed( hmoveable ) || broken( !is_freed( hmoveable )), "expected freed mem %p\n", hmoveable );
+    ok( is_fixed( empty_fixed ), "expected fixed mem %p\n", empty_fixed );
+    ok( is_fixed( hfixed ), "expected fixed mem %p\n", hfixed );
     ok( !GetObjectType( bitmap ), "expected freed handle %p\n", bitmap );
     ok( !GetObjectType( bitmap2 ), "expected freed handle %p\n", bitmap2 );
     ok( !GetObjectType( palette ), "expected freed handle %p\n", palette );
@@ -1817,45 +1932,105 @@ static void test_handles_process( const char *str )
     BOOL r;
     HANDLE h;
     char *ptr;
+    BITMAP bm;
+    PALETTEENTRY entry;
+    BYTE buffer[1024];
 
     format_id = RegisterClipboardFormatA( "my_cool_clipboard_format" );
     r = OpenClipboard( 0 );
     ok( r, "gle %d\n", GetLastError() );
     h = GetClipboardData( CF_TEXT );
-    todo_wine_if( !h ) ok( is_fixed( h ), "expected fixed mem %p\n", h );
+    ok( is_fixed( h ), "expected fixed mem %p\n", h );
     ptr = GlobalLock( h );
-    if (ptr) todo_wine ok( !strcmp( str, ptr ), "wrong data '%.5s'\n", ptr );
+    ok( !strcmp( str, ptr ), "wrong data '%.5s'\n", ptr );
     GlobalUnlock( h );
     h = GetClipboardData( format_id );
-    todo_wine ok( is_fixed( h ), "expected fixed mem %p\n", h );
+    ok( is_fixed( h ), "expected fixed mem %p\n", h );
     ptr = GlobalLock( h );
     if (ptr) ok( !strcmp( str, ptr ), "wrong data '%.5s'\n", ptr );
     GlobalUnlock( h );
     h = GetClipboardData( CF_GDIOBJFIRST + 3 );
-    todo_wine_if( !h ) ok( is_fixed( h ), "expected fixed mem %p\n", h );
+    ok( is_fixed( h ), "expected fixed mem %p\n", h );
     ptr = GlobalLock( h );
-    if (ptr) todo_wine ok( !strcmp( str, ptr ), "wrong data '%.5s'\n", ptr );
+    ok( !strcmp( str, ptr ), "wrong data '%.5s'\n", ptr );
     GlobalUnlock( h );
     trace( "gdiobj %p\n", h );
     h = GetClipboardData( CF_PRIVATEFIRST + 7 );
-    todo_wine_if( !h ) ok( is_fixed( h ), "expected fixed mem %p\n", h );
+    ok( is_fixed( h ), "expected fixed mem %p\n", h );
     ptr = GlobalLock( h );
-    if (ptr) todo_wine ok( !strcmp( str, ptr ), "wrong data '%.5s'\n", ptr );
+    ok( !strcmp( str, ptr ), "wrong data '%.5s'\n", ptr );
     GlobalUnlock( h );
     trace( "private %p\n", h );
     h = GetClipboardData( CF_BITMAP );
-    todo_wine ok( GetObjectType( h ) == OBJ_BITMAP, "expected bitmap %p\n", h );
+    ok( GetObjectType( h ) == OBJ_BITMAP, "expected bitmap %p\n", h );
+    ok( GetObjectW( h, sizeof(bm), &bm ) == sizeof(bm), "GetObject %p failed\n", h );
+    ok( bm.bmWidth == 13 && bm.bmHeight == 17, "wrong bitmap %ux%u\n", bm.bmWidth, bm.bmHeight );
     trace( "bitmap %p\n", h );
     h = GetClipboardData( CF_DSPBITMAP );
     ok( !GetObjectType( h ), "expected invalid object %p\n", h );
     trace( "bitmap2 %p\n", h );
     h = GetClipboardData( CF_PALETTE );
-    todo_wine ok( GetObjectType( h ) == OBJ_PAL, "expected palette %p\n", h );
+    ok( GetObjectType( h ) == OBJ_PAL, "expected palette %p\n", h );
+    ok( GetPaletteEntries( h, 0, 1, &entry ) == 1, "GetPaletteEntries %p failed\n", h );
+    ok( entry.peRed == 0x12 && entry.peGreen == 0x34 && entry.peBlue == 0x56,
+        "wrong color %02x,%02x,%02x\n", entry.peRed, entry.peGreen, entry.peBlue );
     trace( "palette %p\n", h );
+    h = GetClipboardData( CF_METAFILEPICT );
+    ok( is_fixed( h ), "expected fixed mem %p\n", h );
+    ok( GetObjectType( ((METAFILEPICT *)h)->hMF ) == OBJ_METAFILE,
+        "wrong object %p\n", ((METAFILEPICT *)h)->hMF );
+    trace( "metafile %p\n", h );
+    h = GetClipboardData( CF_DSPMETAFILEPICT );
+    ok( is_fixed( h ), "expected fixed mem %p\n", h );
+    ok( GetObjectType( ((METAFILEPICT *)h)->hMF ) == OBJ_METAFILE,
+        "wrong object %p\n", ((METAFILEPICT *)h)->hMF );
+    trace( "metafile2 %p\n", h );
+    h = GetClipboardData( CF_ENHMETAFILE );
+    ok( GetObjectType( h ) == OBJ_ENHMETAFILE, "expected enhmetafile %p\n", h );
+    ok( GetEnhMetaFileBits( h, sizeof(buffer), buffer ) > sizeof(ENHMETAHEADER),
+        "GetEnhMetaFileBits failed on %p\n", h );
+    ok( ((ENHMETAHEADER *)buffer)->nRecords == 3,
+        "wrong records %u\n", ((ENHMETAHEADER *)buffer)->nRecords );
+    trace( "enhmetafile %p\n", h );
+    h = GetClipboardData( CF_DSPENHMETAFILE );
+    ok( GetObjectType( h ) == OBJ_ENHMETAFILE, "expected enhmetafile %p\n", h );
+    ok( GetEnhMetaFileBits( h, sizeof(buffer), buffer ) > sizeof(ENHMETAHEADER),
+        "GetEnhMetaFileBits failed on %p\n", h );
+    ok( ((ENHMETAHEADER *)buffer)->nRecords == 3,
+        "wrong records %u\n", ((ENHMETAHEADER *)buffer)->nRecords );
+    trace( "enhmetafile2 %p\n", h );
     h = GetClipboardData( CF_DIB );
-    todo_wine ok( is_fixed( h ), "expected fixed mem %p\n", h );
+    ok( is_fixed( h ), "expected fixed mem %p\n", h );
     h = GetClipboardData( CF_DIBV5 );
-    todo_wine ok( is_fixed( h ), "expected fixed mem %p\n", h );
+    ok( is_fixed( h ), "expected fixed mem %p\n", h );
+    r = CloseClipboard();
+    ok( r, "gle %d\n", GetLastError() );
+}
+
+static void test_handles_process_open( const char *str )
+{
+    HANDLE h, text = GlobalAlloc( GMEM_DDESHARE|GMEM_MOVEABLE, strlen(str) + 1 );
+    char *ptr = GlobalLock( text );
+
+    strcpy( ptr, str );
+    GlobalUnlock( text );
+
+    /* clipboard already open by parent process */
+    h = SetClipboardData( CF_TEXT,  text );
+    ok( h == text, "wrong mem %p / %p\n", h, text );
+    ok( is_moveable( h ), "expected moveable mem %p\n", h );
+}
+
+static void test_handles_process_dib( const char *str )
+{
+    BOOL r;
+    HANDLE h;
+
+    r = OpenClipboard( 0 );
+    ok( r, "gle %d\n", GetLastError() );
+    h = GetClipboardData( CF_BITMAP );
+    ok( !GetObjectType( h ), "expected invalid object %p\n", h );
+    trace( "dibsection %p\n", h );
     r = CloseClipboard();
     ok( r, "gle %d\n", GetLastError() );
 }
@@ -1863,8 +2038,11 @@ static void test_handles_process( const char *str )
 static void test_data_handles(void)
 {
     BOOL r;
-    HANDLE h;
+    char *ptr;
+    HANDLE h, text;
     HWND hwnd = CreateWindowA( "static", NULL, WS_POPUP, 0, 0, 10, 10, 0, 0, 0, NULL );
+    BITMAPINFO bmi;
+    void *bits;
 
     ok( hwnd != 0, "window creation failed\n" );
     format_id = RegisterClipboardFormatA( "my_cool_clipboard_format" );
@@ -1873,7 +2051,7 @@ static void test_data_handles(void)
     test_handles( hwnd );
     run_thread( test_handles_thread, hwnd, __LINE__ );
 
-    bitmap = CreateBitmap( 10, 10, 1, 1, NULL );
+    bitmap = CreateBitmap( 13, 17, 1, 1, NULL );
     bitmap2 = CreateBitmap( 10, 10, 1, 1, NULL );
     palette = CreatePalette( &logpalette );
 
@@ -1891,6 +2069,18 @@ static void test_data_handles(void)
     ok( GetObjectType( h ) == OBJ_BITMAP, "expected bitmap %p\n", h );
     h = SetClipboardData( CF_PALETTE, palette );
     ok( GetObjectType( h ) == OBJ_PAL, "expected palette %p\n", h );
+    h = SetClipboardData( CF_METAFILEPICT, create_metafile() );
+    ok( is_moveable( h ), "expected moveable mem %p\n", h );
+    trace( "metafile %p\n", h );
+    h = SetClipboardData( CF_DSPMETAFILEPICT, create_metafile() );
+    ok( is_moveable( h ), "expected moveable mem %p\n", h );
+    trace( "metafile2 %p\n", h );
+    h = SetClipboardData( CF_ENHMETAFILE, create_emf() );
+    ok( GetObjectType( h ) == OBJ_ENHMETAFILE, "expected enhmetafile %p\n", h );
+    trace( "enhmetafile %p\n", h );
+    h = SetClipboardData( CF_DSPENHMETAFILE, create_emf() );
+    ok( GetObjectType( h ) == OBJ_ENHMETAFILE, "expected enhmetafile %p\n", h );
+    trace( "enhmetafile2 %p\n", h );
     h = SetClipboardData( CF_GDIOBJFIRST + 3, create_textA() );
     ok( is_moveable( h ), "expected moveable mem %p\n", h );
     h = SetClipboardData( CF_PRIVATEFIRST + 7, create_textA() );
@@ -1911,8 +2101,58 @@ static void test_data_handles(void)
     ok( is_moveable( h ), "expected moveable mem %p\n", h );
     h = GetClipboardData( CF_PRIVATEFIRST + 7 );
     ok( is_moveable( h ), "expected moveable mem %p\n", h );
+
     r = EmptyClipboard();
     ok( r, "gle %d\n", GetLastError() );
+    text = create_textA();
+    h = SetClipboardData( CF_TEXT, text );
+    ok( is_moveable( h ), "expected moveable mem %p\n", h );
+
+    run_process( "handles_open foobar" );
+
+    ok( is_moveable( text ), "expected moveable mem %p\n", text );
+    h = GetClipboardData( CF_TEXT );
+    ok( is_fixed( h ), "expected fixed mem %p\n", h );
+    ok( is_moveable( text ), "expected moveable mem %p\n", text );
+    ptr = GlobalLock( h );
+    ok( !strcmp( ptr, "foobar" ), "wrong data '%.8s'\n", ptr );
+    GlobalUnlock( h );
+
+    r = EmptyClipboard();
+    ok( r, "gle %d\n", GetLastError() );
+    ok( is_fixed( h ), "expected free mem %p\n", h );
+    ok( is_freed( text ) || broken( is_moveable(text) ), /* w2003, w2008 */
+        "expected free mem %p\n", text );
+    r = CloseClipboard();
+    ok( r, "gle %d\n", GetLastError() );
+
+    /* test CF_BITMAP with a DIB section */
+    memset( &bmi, 0, sizeof(bmi) );
+    bmi.bmiHeader.biSize = sizeof( bmi.bmiHeader );
+    bmi.bmiHeader.biWidth = 29;
+    bmi.bmiHeader.biHeight = 13;
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bitmap = CreateDIBSection( 0, &bmi, DIB_RGB_COLORS, &bits, 0, 0 );
+
+    r = OpenClipboard( hwnd );
+    ok( r, "gle %d\n", GetLastError() );
+    r = EmptyClipboard();
+    ok( r, "gle %d\n", GetLastError() );
+    h = SetClipboardData( CF_BITMAP, bitmap );
+    ok( GetObjectType( h ) == OBJ_BITMAP, "expected bitmap %p\n", h );
+    trace( "dibsection %p\n", h );
+    r = CloseClipboard();
+    ok( r, "gle %d\n", GetLastError() );
+
+    run_process( "handles_dib dummy" );
+
+    r = OpenClipboard( hwnd );
+    ok( r, "gle %d\n", GetLastError() );
+    ok( GetObjectType( bitmap ) == OBJ_BITMAP, "expected bitmap %p\n", bitmap );
+    r = EmptyClipboard();
+    ok( r, "gle %d\n", GetLastError() );
+    ok( !GetObjectType( bitmap ), "expected deleted %p\n", bitmap );
     r = CloseClipboard();
     ok( r, "gle %d\n", GetLastError() );
 
@@ -2029,6 +2269,130 @@ static void test_GetUpdatedClipboardFormats(void)
     ok( count == 4, "wrong count %u\n", count );
 }
 
+static const struct
+{
+    char strA[12];
+    WCHAR strW[12];
+    UINT  len;
+} test_data[] =
+{
+    { "foo", {}, 3 },      /* 0 */
+    { "foo", {}, 4 },
+    { "foo\0bar", {}, 7 },
+    { "foo\0bar", {}, 8 },
+    { "", {'f','o','o'}, 3 * sizeof(WCHAR) },
+    { "", {'f','o','o',0}, 4 * sizeof(WCHAR) },     /* 5 */
+    { "", {'f','o','o',0,'b','a','r'}, 7 * sizeof(WCHAR) },
+    { "", {'f','o','o',0,'b','a','r',0}, 8 * sizeof(WCHAR) },
+    { "", {'f','o','o'}, 1 },
+    { "", {'f','o','o'}, 2 },
+    { "", {'f','o','o'}, 5 },     /* 10 */
+    { "", {'f','o','o',0}, 7 },
+    { "", {'f','o','o',0}, 9 },
+};
+
+static void test_string_data(void)
+{
+    UINT i;
+    BOOL r;
+    HANDLE data;
+    char cmd[16];
+    char bufferA[12];
+    WCHAR bufferW[12];
+
+    for (i = 0; i < sizeof(test_data) / sizeof(test_data[0]); i++)
+    {
+        /* 1-byte Unicode strings crash on Win64 */
+#ifdef _WIN64
+        if (!test_data[i].strA[0] && test_data[i].len < sizeof(WCHAR)) continue;
+#endif
+        r = OpenClipboard( 0 );
+        ok( r, "gle %d\n", GetLastError() );
+        r = EmptyClipboard();
+        ok( r, "gle %d\n", GetLastError() );
+        data = GlobalAlloc( GMEM_FIXED, test_data[i].len );
+        if (test_data[i].strA[0])
+        {
+            memcpy( data, test_data[i].strA, test_data[i].len );
+            SetClipboardData( CF_TEXT, data );
+            memcpy( bufferA, test_data[i].strA, test_data[i].len );
+            bufferA[test_data[i].len - 1] = 0;
+            ok( !memcmp( data, bufferA, test_data[i].len ),
+                "%u: wrong data %.*s\n", i, test_data[i].len, (char *)data );
+        }
+        else
+        {
+            memcpy( data, test_data[i].strW, test_data[i].len );
+            SetClipboardData( CF_UNICODETEXT, data );
+            memcpy( bufferW, test_data[i].strW, test_data[i].len );
+            bufferW[(test_data[i].len + 1) / sizeof(WCHAR) - 1] = 0;
+            ok( !memcmp( data, bufferW, test_data[i].len ),
+                "%u: wrong data %s\n", i, wine_dbgstr_wn( data, (test_data[i].len + 1) / sizeof(WCHAR) ));
+        }
+        r = CloseClipboard();
+        ok( r, "gle %d\n", GetLastError() );
+        sprintf( cmd, "string_data %u", i );
+        run_process( cmd );
+    }
+}
+
+static void test_string_data_process( int i )
+{
+    BOOL r;
+    HANDLE data;
+    UINT len, len2;
+    char bufferA[12];
+    WCHAR bufferW[12];
+
+    r = OpenClipboard( 0 );
+    ok( r, "gle %d\n", GetLastError() );
+    if (test_data[i].strA[0])
+    {
+        data = GetClipboardData( CF_TEXT );
+        ok( data != 0, "%u: could not get data\n", i );
+        len = GlobalSize( data );
+        ok( len == test_data[i].len, "%u: wrong size %u / %u\n", i, len, test_data[i].len );
+        memcpy( bufferA, test_data[i].strA, test_data[i].len );
+        bufferA[test_data[i].len - 1] = 0;
+        ok( !memcmp( data, bufferA, len ), "%u: wrong data %.*s\n", i, len, (char *)data );
+        data = GetClipboardData( CF_UNICODETEXT );
+        ok( data != 0, "%u: could not get data\n", i );
+        len = GlobalSize( data );
+        len2 = MultiByteToWideChar( CP_ACP, 0, bufferA, test_data[i].len, bufferW, 12 );
+        ok( len == len2 * sizeof(WCHAR), "%u: wrong size %u / %u\n", i, len, len2 );
+        ok( !memcmp( data, bufferW, len ), "%u: wrong data %s\n", i, wine_dbgstr_wn( data, len2 ));
+    }
+    else
+    {
+        data = GetClipboardData( CF_UNICODETEXT );
+        ok( data != 0, "%u: could not get data\n", i );
+        len = GlobalSize( data );
+        ok( len == test_data[i].len, "%u: wrong size %u / %u\n", i, len, test_data[i].len );
+        memcpy( bufferW, test_data[i].strW, test_data[i].len );
+        bufferW[(test_data[i].len + 1) / sizeof(WCHAR) - 1] = 0;
+        ok( !memcmp( data, bufferW, len ),
+            "%u: wrong data %s\n", i, wine_dbgstr_wn( data, (len + 1) / sizeof(WCHAR) ));
+        data = GetClipboardData( CF_TEXT );
+        if (test_data[i].len >= sizeof(WCHAR))
+        {
+            ok( data != 0, "%u: could not get data\n", i );
+            len = GlobalSize( data );
+            len2 = WideCharToMultiByte( CP_ACP, 0, bufferW, test_data[i].len / sizeof(WCHAR),
+                                        bufferA, 12, NULL, NULL );
+            bufferA[len2 - 1] = 0;
+            ok( len == len2, "%u: wrong size %u / %u\n", i, len, len2 );
+            ok( !memcmp( data, bufferA, len ), "%u: wrong data %.*s\n", i, len, (char *)data );
+        }
+        else
+        {
+            ok( !data, "%u: got data for empty string\n", i );
+            ok( IsClipboardFormatAvailable( CF_TEXT ), "%u: text not available\n", i );
+        }
+    }
+    r = CloseClipboard();
+    ok( r, "gle %d\n", GetLastError() );
+}
+
 START_TEST(clipboard)
 {
     char **argv;
@@ -2056,6 +2420,21 @@ START_TEST(clipboard)
         test_handles_process( argv[3] );
         return;
     }
+    if (argc == 4 && !strcmp( argv[2], "handles_open" ))
+    {
+        test_handles_process_open( argv[3] );
+        return;
+    }
+    if (argc == 4 && !strcmp( argv[2], "handles_dib" ))
+    {
+        test_handles_process_dib( argv[3] );
+        return;
+    }
+    if (argc == 4 && !strcmp( argv[2], "string_data" ))
+    {
+        test_string_data_process( atoi( argv[3] ));
+        return;
+    }
 
     test_RegisterClipboardFormatA();
     test_ClipboardOwner();
@@ -2063,4 +2442,5 @@ START_TEST(clipboard)
     test_messages();
     test_data_handles();
     test_GetUpdatedClipboardFormats();
+    test_string_data();
 }

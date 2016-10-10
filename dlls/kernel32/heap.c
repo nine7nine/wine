@@ -362,7 +362,7 @@ HGLOBAL WINAPI GlobalAlloc(
 
    if((flags & GMEM_MOVEABLE)==0) /* POINTER */
    {
-      palloc=HeapAlloc(GetProcessHeap(), hpflags, size);
+      palloc = HeapAlloc( GetProcessHeap(), hpflags, max( 1, size ));
       TRACE( "(flags=%04x) returning %p\n",  flags, palloc );
       return palloc;
    }
@@ -557,7 +557,7 @@ HGLOBAL WINAPI GlobalHandle(
         /* GlobalAlloc with GMEM_MOVEABLE then magic test in HeapValidate  */
         /* will fail.                                                      */
         if (ISPOINTER(pmem)) {
-            if (HeapValidate( GetProcessHeap(), 0, pmem )) {
+            if (HeapValidate( GetProcessHeap(), HEAP_NO_SERIALIZE, pmem )) {
                 handle = (HGLOBAL)pmem;  /* valid fixed block */
                 break;
             }
@@ -569,8 +569,8 @@ HGLOBAL WINAPI GlobalHandle(
         maybe_intern = HANDLE_TO_INTERN( handle );
         if (maybe_intern->Magic == MAGIC_GLOBAL_USED) {
             test = maybe_intern->Pointer;
-            if (HeapValidate( GetProcessHeap(), 0, (const char *)test - HGLOBAL_STORAGE ) && /* obj(-handle) valid arena? */
-                HeapValidate( GetProcessHeap(), 0, maybe_intern ))  /* intern valid arena? */
+            if (HeapValidate( GetProcessHeap(), HEAP_NO_SERIALIZE, (const char *)test - HGLOBAL_STORAGE ) && /* obj(-handle) valid arena? */
+                HeapValidate( GetProcessHeap(), HEAP_NO_SERIALIZE, maybe_intern ))  /* intern valid arena? */
                 break;  /* valid moveable block */
         }
         handle = 0;
@@ -749,7 +749,7 @@ HGLOBAL WINAPI GlobalFree(HGLOBAL hmem)
         hreturned = 0;
         if(ISPOINTER(hmem)) /* POINTER */
         {
-            if(!HeapFree(GetProcessHeap(), 0, hmem))
+            if(!HeapFree(GetProcessHeap(), HEAP_NO_SERIALIZE, hmem))
             {
                 SetLastError(ERROR_INVALID_HANDLE);
                 hreturned = hmem;
@@ -769,9 +769,9 @@ HGLOBAL WINAPI GlobalFree(HGLOBAL hmem)
                 /*    SetLastError(ERROR_INVALID_HANDLE);  */
 
                 if(pintern->Pointer)
-                    if(!HeapFree(GetProcessHeap(), 0, (char *)(pintern->Pointer)-HGLOBAL_STORAGE))
+                    if(!HeapFree(GetProcessHeap(), HEAP_NO_SERIALIZE, (char *)(pintern->Pointer)-HGLOBAL_STORAGE))
                         hreturned=hmem;
-                if(!HeapFree(GetProcessHeap(), 0, pintern))
+                if(!HeapFree(GetProcessHeap(), HEAP_NO_SERIALIZE, pintern))
                     hreturned=hmem;
             }
             else
@@ -961,10 +961,16 @@ SIZE_T WINAPI GlobalCompact( DWORD minfree )
  *  Windows memory management does not provide a separate local heap
  *  and global heap.
  */
-HLOCAL WINAPI LocalAlloc(
-                UINT flags, /* [in] Allocation attributes */
-                SIZE_T size /* [in] Number of bytes to allocate */
-) {
+HLOCAL WINAPI LocalAlloc( UINT flags, SIZE_T size )
+{
+    /* LocalAlloc allows a 0-size fixed block, but GlobalAlloc doesn't */
+    if (!(flags & LMEM_MOVEABLE))
+    {
+        DWORD heap_flags = (flags & LMEM_ZEROINIT) ? HEAP_ZERO_MEMORY : 0;
+        void *ret = HeapAlloc( GetProcessHeap(), heap_flags, size );
+        TRACE( "(flags=%04x) returning %p\n",  flags, ret );
+        return ret;
+    }
     return GlobalAlloc( flags, size );
 }
 

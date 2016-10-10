@@ -97,10 +97,10 @@ static void ff_dump_effect(struct ff_effect *effect)
     if (effect->replay.length)
       length = wine_dbg_sprintf("%u ms", effect->replay.length);
 
-    TRACE("type: 0x%x %s, id %d, direction 0x%x (angle: %.2f), time length %s, start delay %u ms\n",
+    TRACE("type 0x%x %s, id %d, direction 0x%x (source angle %.2f), time length %s, start delay %u ms\n",
           effect->type, type, effect->id, effect->direction, angle, length, effect->replay.delay);
     if (effect->trigger.button || effect->trigger.interval)
-        TRACE("trigger button %u, re-trigger interval %u ms\n",
+        TRACE(" -> trigger button %u, re-trigger interval %u ms\n",
               effect->trigger.button, effect->trigger.interval);
 
     if (effect->type == FF_PERIODIC)
@@ -118,8 +118,9 @@ static void ff_dump_effect(struct ff_effect *effect)
             FE(FF_CUSTOM);
         }
 #undef FE
-        TRACE(" -> waveform 0x%x %s, period %u, magnitude %d, offset %d, phase %u, custom len %d\n",
-              per->waveform, wave, per->period, per->magnitude, per->offset, per->phase, per->custom_len);
+        angle = ff_effect_direction_to_rad(per->phase) * 180 / M_PI;
+        TRACE(" -> waveform 0x%x %s, period %u ms, magnitude %d, offset %d, phase 0x%x (angle %.2f), custom len %d\n",
+              per->waveform, wave, per->period, per->magnitude, per->offset, per->phase, angle, per->custom_len);
         env = &per->envelope;
     }
     else if (effect->type == FF_CONSTANT)
@@ -137,7 +138,7 @@ static void ff_dump_effect(struct ff_effect *effect)
     else if (effect->type == FF_RUMBLE)
     {
         struct ff_rumble_effect *rumble = &effect->u.rumble;
-        TRACE(" -> strong/weak magnitude %d/%d\n", rumble->strong_magnitude, rumble->weak_magnitude);
+        TRACE(" -> strong/weak magnitude %u/%u\n", rumble->strong_magnitude, rumble->weak_magnitude);
     }
     else if (effect->type == FF_SPRING || effect->type == FF_FRICTION ||
              effect->type == FF_DAMPER || effect->type == FF_INERTIA)
@@ -154,7 +155,7 @@ static void ff_dump_effect(struct ff_effect *effect)
     }
 
     if (env)
-        TRACE(" -> envelope attack length/level %u/%u, fade length/level %u/%u\n",
+        TRACE(" -> envelope attack length(ms)/level %u/%u, fade length(ms)/level %u/%u\n",
               env->attack_length, env->attack_level, env->fade_length, env->fade_level);
 }
 
@@ -585,9 +586,12 @@ static HRESULT WINAPI LinuxInputEffectImpl_SetParameters(
             env->fade_length = 0;
             env->fade_level = 0;
         }
-        else if(peff->lpEnvelope->dwAttackTime || peff->lpEnvelope->dwAttackLevel ||
-                peff->lpEnvelope->dwFadeTime || peff->lpEnvelope->dwFadeLevel)
-            WARN("Ignoring dinput envelope not supported in the linux effect\n");
+        else if(peff->lpEnvelope)
+        {
+            if(peff->lpEnvelope->dwAttackTime || peff->lpEnvelope->dwAttackLevel ||
+               peff->lpEnvelope->dwFadeTime || peff->lpEnvelope->dwFadeLevel)
+                WARN("Ignoring dinput envelope not supported in the linux effect\n");
+        }
     }
 
     /* Gain and Sample Period settings are not supported by the linux
@@ -629,7 +633,8 @@ static HRESULT WINAPI LinuxInputEffectImpl_SetParameters(
 
             This->effect.u.periodic.magnitude = (tsp->dwMagnitude / 10) * 32;
             This->effect.u.periodic.offset = (tsp->lOffset / 10) * 32;
-            This->effect.u.periodic.phase = (tsp->dwPhase / 9) * 8; /* == (/ 36 * 32) */
+            /* phase ranges from 0 - 35999 in dinput and 0 - 65535 on linux */
+            This->effect.u.periodic.phase = (tsp->dwPhase / 36) * 65;
             /* dinput uses microseconds, linux uses miliseconds */
             if (tsp->dwPeriod <= 1000)
                 This->effect.u.periodic.period = 1;

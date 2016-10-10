@@ -4468,7 +4468,7 @@ struct open_clipboard_request
 struct open_clipboard_reply
 {
     struct reply_header __header;
-    int            owner;
+    user_handle_t  owner;
     char __pad_12[4];
 };
 
@@ -4477,13 +4477,13 @@ struct open_clipboard_reply
 struct close_clipboard_request
 {
     struct request_header __header;
-    int            changed;
+    char __pad_12[4];
 };
 struct close_clipboard_reply
 {
     struct reply_header __header;
     user_handle_t  viewer;
-    int            owner;
+    user_handle_t  owner;
 };
 
 
@@ -4527,6 +4527,71 @@ struct empty_clipboard_reply
 
 
 
+struct set_clipboard_data_request
+{
+    struct request_header __header;
+    unsigned int   format;
+    unsigned int   lcid;
+    /* VARARG(data,bytes); */
+    char __pad_20[4];
+};
+struct set_clipboard_data_reply
+{
+    struct reply_header __header;
+    unsigned int   seqno;
+    char __pad_12[4];
+};
+
+
+
+struct get_clipboard_data_request
+{
+    struct request_header __header;
+    unsigned int   format;
+    int            cached;
+    unsigned int   seqno;
+};
+struct get_clipboard_data_reply
+{
+    struct reply_header __header;
+    unsigned int   from;
+    user_handle_t  owner;
+    unsigned int   seqno;
+    data_size_t    total;
+    /* VARARG(data,bytes); */
+};
+
+
+
+struct get_clipboard_formats_request
+{
+    struct request_header __header;
+    unsigned int   format;
+};
+struct get_clipboard_formats_reply
+{
+    struct reply_header __header;
+    unsigned int   count;
+    /* VARARG(formats,uints); */
+    char __pad_12[4];
+};
+
+
+
+struct enum_clipboard_formats_request
+{
+    struct request_header __header;
+    unsigned int   previous;
+};
+struct enum_clipboard_formats_reply
+{
+    struct reply_header __header;
+    unsigned int   format;
+    char __pad_12[4];
+};
+
+
+
 struct release_clipboard_request
 {
     struct request_header __header;
@@ -4536,7 +4601,7 @@ struct release_clipboard_reply
 {
     struct reply_header __header;
     user_handle_t  viewer;
-    char __pad_12[4];
+    user_handle_t  owner;
 };
 
 
@@ -5729,6 +5794,10 @@ enum request
     REQ_close_clipboard,
     REQ_set_clipboard_info,
     REQ_empty_clipboard,
+    REQ_set_clipboard_data,
+    REQ_get_clipboard_data,
+    REQ_get_clipboard_formats,
+    REQ_enum_clipboard_formats,
     REQ_release_clipboard,
     REQ_get_clipboard_info,
     REQ_set_clipboard_viewer,
@@ -6016,6 +6085,10 @@ union generic_request
     struct close_clipboard_request close_clipboard_request;
     struct set_clipboard_info_request set_clipboard_info_request;
     struct empty_clipboard_request empty_clipboard_request;
+    struct set_clipboard_data_request set_clipboard_data_request;
+    struct get_clipboard_data_request get_clipboard_data_request;
+    struct get_clipboard_formats_request get_clipboard_formats_request;
+    struct enum_clipboard_formats_request enum_clipboard_formats_request;
     struct release_clipboard_request release_clipboard_request;
     struct get_clipboard_info_request get_clipboard_info_request;
     struct set_clipboard_viewer_request set_clipboard_viewer_request;
@@ -6301,6 +6374,10 @@ union generic_reply
     struct close_clipboard_reply close_clipboard_reply;
     struct set_clipboard_info_reply set_clipboard_info_reply;
     struct empty_clipboard_reply empty_clipboard_reply;
+    struct set_clipboard_data_reply set_clipboard_data_reply;
+    struct get_clipboard_data_reply get_clipboard_data_reply;
+    struct get_clipboard_formats_reply get_clipboard_formats_reply;
+    struct enum_clipboard_formats_reply enum_clipboard_formats_reply;
     struct release_clipboard_reply release_clipboard_reply;
     struct get_clipboard_info_reply get_clipboard_info_reply;
     struct set_clipboard_viewer_reply set_clipboard_viewer_reply;
@@ -6365,6 +6442,6 @@ union generic_reply
     struct terminate_job_reply terminate_job_reply;
 };
 
-#define SERVER_PROTOCOL_VERSION 515
+#define SERVER_PROTOCOL_VERSION 522
 
 #endif /* __WINE_WINE_SERVER_PROTOCOL_H */

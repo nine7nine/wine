@@ -187,6 +187,17 @@ typedef struct {
 #endif
 } _Ctypevec;
 
+#if _MSVCP_VER >= 140
+typedef struct {
+    int wchar;
+    unsigned short byte, state;
+} _Mbstatet;
+#define MBSTATET_TO_INT(state) ((state)->wchar)
+#else
+typedef int _Mbstatet;
+#define MBSTATET_TO_INT(state) (*(state))
+#endif
+
 /* class codecvt_base */
 typedef struct {
     locale_facet facet;
@@ -198,10 +209,10 @@ typedef struct {
 } codecvt_char;
 
 MSVCP_bool __thiscall codecvt_base_always_noconv(const codecvt_base*);
-int __thiscall codecvt_char_unshift(const codecvt_char*, int*, char*, char*, char**);
-int __thiscall codecvt_char_out(const codecvt_char*, int*, const char*,
+int __thiscall codecvt_char_unshift(const codecvt_char*, _Mbstatet*, char*, char*, char**);
+int __thiscall codecvt_char_out(const codecvt_char*, _Mbstatet*, const char*,
         const char*, const char**, char*, char*, char**);
-int __thiscall codecvt_char_in(const codecvt_char*, int*, const char*,
+int __thiscall codecvt_char_in(const codecvt_char*, _Mbstatet*, const char*,
         const char*, const char**, char*, char*, char**);
 int __thiscall codecvt_base_max_length(const codecvt_base*);
 
@@ -223,10 +234,10 @@ typedef struct {
     _Cvtvec cvt;
 } codecvt_wchar;
 
-int __thiscall codecvt_wchar_unshift(const codecvt_wchar*, int*, char*, char*, char**);
-int __thiscall codecvt_wchar_out(const codecvt_wchar*, int*, const wchar_t*,
+int __thiscall codecvt_wchar_unshift(const codecvt_wchar*, _Mbstatet*, char*, char*, char**);
+int __thiscall codecvt_wchar_out(const codecvt_wchar*, _Mbstatet*, const wchar_t*,
         const wchar_t*, const wchar_t**, char*, char*, char**);
-int __thiscall codecvt_wchar_in(const codecvt_wchar*, int*, const char*,
+int __thiscall codecvt_wchar_in(const codecvt_wchar*, _Mbstatet*, const char*,
         const char*, const char**, wchar_t*, wchar_t*, wchar_t**);
 
 /* class ctype_base */
@@ -258,6 +269,9 @@ wchar_t __thiscall ctype_wchar_widen_ch(const ctype_wchar*, char);
 /* class locale */
 typedef struct
 {
+#if _MSVCP_VER >= 140
+    int unused;
+#endif
     struct _locale__Locimp *ptr;
 } locale;
 
@@ -496,7 +510,9 @@ unsigned short __thiscall basic_streambuf_wchar_sputc(basic_streambuf_wchar*, wc
 /* class num_get<char> */
 typedef struct {
     locale_facet facet;
+#if _MSVCP_VER <= 100
     _Cvtvec cvt;
+#endif
 } num_get;
 
 num_get* num_get_char_use_facet(const locale*);

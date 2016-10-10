@@ -494,8 +494,9 @@ static inline HRESULT date_to_string(DOUBLE time, BOOL show_offset, int offset, 
 
     BOOL formatAD = TRUE;
     WCHAR week[64], month[64];
+    WCHAR buf[192];
     jsstr_t *date_jsstr;
-    int len, size, year, day;
+    int year, day;
     DWORD lcid_en;
     WCHAR sign = '-';
 
@@ -506,65 +507,44 @@ static inline HRESULT date_to_string(DOUBLE time, BOOL show_offset, int offset, 
     }
 
     if(r) {
-        WCHAR *date_str;
-
-        len = 21;
-
         lcid_en = MAKELCID(MAKELANGID(LANG_ENGLISH,SUBLANG_ENGLISH_US),SORT_DEFAULT);
 
-        size = GetLocaleInfoW(lcid_en, week_ids[(int)week_day(time)], week, sizeof(week)/sizeof(*week));
-        assert(size);
-        len += size-1;
+        week[0] = 0;
+        GetLocaleInfoW(lcid_en, week_ids[(int)week_day(time)], week, sizeof(week)/sizeof(*week));
 
-        size = GetLocaleInfoW(lcid_en, month_ids[(int)month_from_time(time)], month, sizeof(month)/sizeof(*month));
-        len += size-1;
-
-        year = year_from_time(time);
-        if(year<0)
-            year = -year+1;
-        do {
-            year /= 10;
-            len++;
-        } while(year);
+        month[0] = 0;
+        GetLocaleInfoW(lcid_en, month_ids[(int)month_from_time(time)], month, sizeof(month)/sizeof(*month));
 
         year = year_from_time(time);
         if(year<0) {
             formatAD = FALSE;
             year = -year+1;
-            len += 5;
         }
 
         day = date_from_time(time);
-        do {
-            day /= 10;
-            len++;
-        } while(day);
-        day = date_from_time(time);
 
-        if(!show_offset) len -= 9;
-        else if(offset == 0) len -= 5;
-        else if(offset < 0) {
+        if(offset < 0) {
             sign = '+';
             offset = -offset;
         }
 
-        date_jsstr = jsstr_alloc_buf(len, &date_str);
-        if(!date_jsstr)
-            return E_OUTOFMEMORY;
-
         if(!show_offset)
-            sprintfW(date_str, formatNoOffsetW, week, month, day,
+            sprintfW(buf, formatNoOffsetW, week, month, day,
                     (int)hour_from_time(time), (int)min_from_time(time),
                     (int)sec_from_time(time), year, formatAD?ADW:BCW);
         else if(offset)
-            sprintfW(date_str, formatW, week, month, day,
+            sprintfW(buf, formatW, week, month, day,
                     (int)hour_from_time(time), (int)min_from_time(time),
                     (int)sec_from_time(time), sign, offset/60, offset%60,
                     year, formatAD?ADW:BCW);
         else
-            sprintfW(date_str, formatUTCW, week, month, day,
+            sprintfW(buf, formatUTCW, week, month, day,
                     (int)hour_from_time(time), (int)min_from_time(time),
                     (int)sec_from_time(time), year, formatAD?ADW:BCW);
+
+        date_jsstr = jsstr_alloc(buf);
+        if(!date_jsstr)
+            return E_OUTOFMEMORY;
 
         *r = jsval_string(date_jsstr);
     }
@@ -674,9 +654,10 @@ static inline HRESULT create_utc_string(script_ctx_t *ctx, vdisp_t *jsthis, jsva
 
     BOOL formatAD = TRUE;
     WCHAR week[64], month[64];
+    WCHAR buf[192];
     DateInstance *date;
     jsstr_t *date_str;
-    int len, size, year, day;
+    int year, day;
     DWORD lcid_en;
 
     if(!(date = date_this(jsthis)))
@@ -689,47 +670,29 @@ static inline HRESULT create_utc_string(script_ctx_t *ctx, vdisp_t *jsthis, jsva
     }
 
     if(r) {
-        WCHAR *ptr;
-
-        len = 17;
-
         lcid_en = MAKELCID(MAKELANGID(LANG_ENGLISH,SUBLANG_ENGLISH_US),SORT_DEFAULT);
 
-        size = GetLocaleInfoW(lcid_en, week_ids[(int)week_day(date->time)], week, sizeof(week)/sizeof(*week));
-        len += size-1;
+        week[0] = 0;
+        GetLocaleInfoW(lcid_en, week_ids[(int)week_day(date->time)], week, sizeof(week)/sizeof(*week));
 
-        size = GetLocaleInfoW(lcid_en, month_ids[(int)month_from_time(date->time)], month, sizeof(month)/sizeof(*month));
-        len += size-1;
-
-        year = year_from_time(date->time);
-        if(year<0)
-            year = -year+1;
-        do {
-            year /= 10;
-            len++;
-        } while(year);
+        month[0] = 0;
+        GetLocaleInfoW(lcid_en, month_ids[(int)month_from_time(date->time)], month, sizeof(month)/sizeof(*month));
 
         year = year_from_time(date->time);
         if(year<0) {
             formatAD = FALSE;
             year = -year+1;
-            len += 5;
         }
 
         day = date_from_time(date->time);
-        do {
-            day /= 10;
-            len++;
-        } while(day);
-        day = date_from_time(date->time);
 
-        date_str = jsstr_alloc_buf(len, &ptr);
-        if(!date_str)
-            return E_OUTOFMEMORY;
-
-        sprintfW(ptr, formatAD?formatADW:formatBCW, week, day, month, year,
+        sprintfW(buf, formatAD ? formatADW : formatBCW, week, day, month, year,
                 (int)hour_from_time(date->time), (int)min_from_time(date->time),
                 (int)sec_from_time(date->time));
+
+        date_str = jsstr_alloc(buf);
+        if(!date_str)
+            return E_OUTOFMEMORY;
 
         *r = jsval_string(date_str);
     }
@@ -769,9 +732,10 @@ static HRESULT dateobj_to_date_string(DateInstance *date, jsval_t *r)
 
     BOOL formatAD = TRUE;
     WCHAR week[64], month[64];
+    WCHAR buf[192];
     jsstr_t *date_str;
     DOUBLE time;
-    int len, size, year, day;
+    int year, day;
     DWORD lcid_en;
 
     if(isnan(date->time)) {
@@ -783,46 +747,27 @@ static HRESULT dateobj_to_date_string(DateInstance *date, jsval_t *r)
     time = local_time(date->time, date);
 
     if(r) {
-        WCHAR *ptr;
-
-        len = 5;
-
         lcid_en = MAKELCID(MAKELANGID(LANG_ENGLISH,SUBLANG_ENGLISH_US),SORT_DEFAULT);
 
-        size = GetLocaleInfoW(lcid_en, week_ids[(int)week_day(time)], week, sizeof(week)/sizeof(*week));
-        assert(size);
-        len += size-1;
+        week[0] = 0;
+        GetLocaleInfoW(lcid_en, week_ids[(int)week_day(time)], week, sizeof(week)/sizeof(*week));
 
-        size = GetLocaleInfoW(lcid_en, month_ids[(int)month_from_time(time)], month, sizeof(month)/sizeof(*month));
-        assert(size);
-        len += size-1;
-
-        year = year_from_time(time);
-        if(year<0)
-            year = -year+1;
-        do {
-            year /= 10;
-            len++;
-        } while(year);
+        month[0] = 0;
+        GetLocaleInfoW(lcid_en, month_ids[(int)month_from_time(time)], month, sizeof(month)/sizeof(*month));
 
         year = year_from_time(time);
         if(year<0) {
             formatAD = FALSE;
             year = -year+1;
-            len += 5;
         }
 
         day = date_from_time(time);
-        do {
-            day /= 10;
-            len++;
-        } while(day);
-        day = date_from_time(time);
 
-        date_str = jsstr_alloc_buf(len, &ptr);
+        sprintfW(buf, formatAD ? formatADW : formatBCW, week, month, day, year);
+
+        date_str = jsstr_alloc(buf);
         if(!date_str)
             return E_OUTOFMEMORY;
-        sprintfW(ptr, formatAD?formatADW:formatBCW, week, month, day, year);
 
         *r = jsval_string(date_str);
     }
@@ -2479,7 +2424,7 @@ static HRESULT DateConstr_value(script_ctx_t *ctx, vdisp_t *jsthis, WORD flags, 
             if(FAILED(hres))
                 return hres;
 
-            di = (DateInstance*)date;
+            di = date_from_jsdisp(date);
             di->time = utc(di->time, di);
         }
         }

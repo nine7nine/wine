@@ -871,6 +871,12 @@ ULONG CDECL wined3d_texture_decref(struct wined3d_texture *texture)
 
     if (!refcount)
     {
+        /* Wait for the texture to become idle if it's using user memory,
+         * since the application is allowed to free that memory once the
+         * texture is destroyed. Note that this implies that
+         * wined3d_texture_destroy_object() can't access that memory either. */
+        if (texture->user_memory)
+            wined3d_resource_wait_idle(&texture->resource);
         wined3d_texture_sub_resources_destroyed(texture);
         texture->resource.parent_ops->wined3d_object_destroyed(texture->resource.parent);
         resource_cleanup(&texture->resource);
@@ -1131,6 +1137,7 @@ HRESULT CDECL wined3d_texture_update_desc(struct wined3d_texture *texture, UINT 
 
     if (device->d3d_initialized)
         wined3d_cs_emit_unload_resource(device->cs, &texture->resource);
+    wined3d_resource_wait_idle(&texture->resource);
 
     sub_resource = &texture->sub_resources[0];
     surface = sub_resource->u.surface;
@@ -2821,7 +2828,6 @@ HRESULT CDECL wined3d_texture_create(struct wined3d_device *device, const struct
     if (data)
     {
         unsigned int sub_count = level_count * layer_count;
-        struct wined3d_context *context;
         unsigned int i;
 
         for (i = 0; i < sub_count; ++i)
@@ -2835,21 +2841,11 @@ HRESULT CDECL wined3d_texture_create(struct wined3d_device *device, const struct
             }
         }
 
-        context = context_acquire(device, NULL);
-
-        wined3d_texture_prepare_texture(object, context, FALSE);
-        wined3d_texture_bind_and_dirtify(object, context, FALSE);
-
         for (i = 0; i < sub_count; ++i)
         {
-            const struct wined3d_const_bo_address addr = {0, data[i].data};
-
-            wined3d_texture_upload_data(object, i, context, &addr, data[i].row_pitch, data[i].slice_pitch);
-            wined3d_texture_validate_location(object, i, WINED3D_LOCATION_TEXTURE_RGB);
-            wined3d_texture_invalidate_location(object, i, ~WINED3D_LOCATION_TEXTURE_RGB);
+            wined3d_device_update_sub_resource(device, &object->resource,
+                    i, NULL, data[i].data, data[i].row_pitch, data[i].slice_pitch);
         }
-
-        context_release(context);
     }
 
     TRACE("Created texture %p.\n", object);

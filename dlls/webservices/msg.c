@@ -71,6 +71,7 @@ struct msg
     WS_ADDRESSING_VERSION     version_addr;
     BOOL                      is_addressed;
     WS_STRING                 addr;
+    WS_STRING                 action;
     WS_HEAP                  *heap;
     WS_XML_BUFFER            *buf;
     WS_XML_WRITER            *writer;
@@ -118,6 +119,7 @@ static void free_msg( struct msg *msg )
     WsFreeWriter( msg->writer );
     WsFreeHeap( msg->heap );
     heap_free( msg->addr.chars );
+    heap_free( msg->action.chars );
     for (i = 0; i < msg->header_count; i++) free_header( msg->header[i] );
     heap_free( msg->header );
     heap_free( msg );
@@ -260,6 +262,16 @@ HRESULT WINAPI WsGetMessageProperty( WS_MESSAGE *handle, WS_MESSAGE_PROPERTY_ID 
         *(WS_XML_BUFFER **)buf = msg->buf;
         return S_OK;
 
+    case WS_MESSAGE_PROPERTY_BODY_READER:
+        if (!buf || size != sizeof(msg->reader_body)) return E_INVALIDARG;
+        *(WS_XML_READER **)buf = msg->reader_body;
+        return S_OK;
+
+    case WS_MESSAGE_PROPERTY_BODY_WRITER:
+        if (!buf || size != sizeof(msg->writer_body)) return E_INVALIDARG;
+        *(WS_XML_WRITER **)buf = msg->writer_body;
+        return S_OK;
+
     case WS_MESSAGE_PROPERTY_IS_ADDRESSED:
         if (msg->state < WS_MESSAGE_STATE_INITIALIZED) return WS_E_INVALID_OPERATION;
         *(BOOL *)buf = msg->is_addressed;
@@ -394,45 +406,30 @@ static const WS_XML_STRING *get_header_name( WS_HEADER_TYPE type )
     }
 }
 
-static HRESULT write_envelope_start( struct msg *msg, WS_XML_WRITER *writer )
+static HRESULT write_headers( struct msg *msg, const WS_XML_STRING *ns_env, const WS_XML_STRING *ns_addr,
+                              WS_XML_WRITER *writer )
 {
     static const char anonymous[] = "http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous";
     static const WS_XML_STRING prefix_s = {1, (BYTE *)"s"}, prefix_a = {1, (BYTE *)"a"};
-    static const WS_XML_STRING envelope = {8, (BYTE *)"Envelope"}, header = {6, (BYTE *)"Header"};
     static const WS_XML_STRING msgid = {9, (BYTE *)"MessageID"}, replyto = {7, (BYTE *)"ReplyTo"};
-    static const WS_XML_STRING address = {7, (BYTE *)"Address"}, body = {4, (BYTE *)"Body"};
-    WS_XML_STRING ns_env, ns_addr;
+    static const WS_XML_STRING address = {7, (BYTE *)"Address"}, header = {6, (BYTE *)"Header"};
     WS_XML_UTF8_TEXT urn, addr;
     HRESULT hr;
     ULONG i;
 
-    if ((hr = get_env_namespace( msg->version_env, &ns_env )) != S_OK) return hr;
-    if ((hr = get_addr_namespace( msg->version_addr, &ns_addr )) != S_OK) return hr;
+    if ((hr = WsWriteXmlnsAttribute( writer, &prefix_a, ns_addr, FALSE, NULL )) != S_OK) return hr;
+    if ((hr = WsWriteStartElement( writer, &prefix_s, &header, ns_env, NULL )) != S_OK) return hr;
 
-    if ((hr = WsWriteStartElement( writer, &prefix_s, &envelope, &ns_env, NULL )) != S_OK) return hr;
-    if (msg->version_addr < WS_ADDRESSING_VERSION_TRANSPORT &&
-        (hr = WsWriteXmlnsAttribute( writer, &prefix_a, &ns_addr, FALSE, NULL )) != S_OK) return hr;
-    if ((hr = WsWriteStartElement( writer, &prefix_s, &header, &ns_env, NULL )) != S_OK) return hr;
-
-    if (msg->version_addr < WS_ADDRESSING_VERSION_TRANSPORT)
-    {
-        if ((hr = WsWriteStartElement( writer, &prefix_a, &msgid, &ns_addr, NULL )) != S_OK) return hr;
-        urn.text.textType = WS_XML_TEXT_TYPE_UNIQUE_ID;
-        memcpy( &urn.value, &msg->id, sizeof(msg->id) );
-        if ((hr = WsWriteText( writer, &urn.text, NULL )) != S_OK) return hr;
-        if ((hr = WsWriteEndElement( writer, NULL )) != S_OK) return hr; /* </a:MessageID> */
-    }
-
-    for (i = 0; i < msg->header_count; i++)
-    {
-        if (msg->header[i]->mapped) continue;
-        if ((hr = WsWriteXmlBuffer( writer, msg->header[i]->u.buf, NULL )) != S_OK) return hr;
-    }
+    if ((hr = WsWriteStartElement( writer, &prefix_a, &msgid, ns_addr, NULL )) != S_OK) return hr;
+    urn.text.textType = WS_XML_TEXT_TYPE_UNIQUE_ID;
+    memcpy( &urn.value, &msg->id, sizeof(msg->id) );
+    if ((hr = WsWriteText( writer, &urn.text, NULL )) != S_OK) return hr;
+    if ((hr = WsWriteEndElement( writer, NULL )) != S_OK) return hr; /* </a:MessageID> */
 
     if (msg->version_addr == WS_ADDRESSING_VERSION_0_9)
     {
-        if ((hr = WsWriteStartElement( writer, &prefix_a, &replyto, &ns_addr, NULL )) != S_OK) return hr;
-        if ((hr = WsWriteStartElement( writer, &prefix_a, &address, &ns_addr, NULL )) != S_OK) return hr;
+        if ((hr = WsWriteStartElement( writer, &prefix_a, &replyto, ns_addr, NULL )) != S_OK) return hr;
+        if ((hr = WsWriteStartElement( writer, &prefix_a, &address, ns_addr, NULL )) != S_OK) return hr;
 
         addr.text.textType = WS_XML_TEXT_TYPE_UTF8;
         addr.value.bytes   = (BYTE *)anonymous;
@@ -442,8 +439,52 @@ static HRESULT write_envelope_start( struct msg *msg, WS_XML_WRITER *writer )
         if ((hr = WsWriteEndElement( writer, NULL )) != S_OK) return hr; /* </a:ReplyTo> */
     }
 
-    if ((hr = WsWriteEndElement( writer, NULL )) != S_OK) return hr; /* </s:Header> */
-    return WsWriteStartElement( writer, &prefix_s, &body, &ns_env, NULL ); /* <s:Body> */
+    for (i = 0; i < msg->header_count; i++)
+    {
+        if (msg->header[i]->mapped) continue;
+        if ((hr = WsWriteXmlBuffer( writer, msg->header[i]->u.buf, NULL )) != S_OK) return hr;
+    }
+
+    return WsWriteEndElement( writer, NULL ); /* </s:Header> */
+}
+
+static HRESULT write_headers_transport( struct msg *msg, const WS_XML_STRING *ns_env, WS_XML_WRITER *writer )
+{
+    static const WS_XML_STRING prefix = {1, (BYTE *)"s"}, header = {6, (BYTE *)"Header"};
+    HRESULT hr = S_OK;
+    ULONG i;
+
+    if ((msg->header_count || !msg->action.length) &&
+        (hr = WsWriteStartElement( writer, &prefix, &header, ns_env, NULL )) != S_OK) return hr;
+
+    for (i = 0; i < msg->header_count; i++)
+    {
+        if (msg->header[i]->mapped) continue;
+        if ((hr = WsWriteXmlBuffer( writer, msg->header[i]->u.buf, NULL )) != S_OK) return hr;
+    }
+
+    if (msg->header_count || !msg->action.length) hr = WsWriteEndElement( writer, NULL ); /* </s:Header> */
+    return hr;
+}
+
+static HRESULT write_envelope_start( struct msg *msg, WS_XML_WRITER *writer )
+{
+    static const WS_XML_STRING envelope = {8, (BYTE *)"Envelope"}, body = {4, (BYTE *)"Body"};
+    static const WS_XML_STRING prefix = {1, (BYTE *)"s"};
+    WS_XML_STRING ns_env, ns_addr;
+    HRESULT hr;
+
+    if ((hr = get_env_namespace( msg->version_env, &ns_env )) != S_OK) return hr;
+    if ((hr = get_addr_namespace( msg->version_addr, &ns_addr )) != S_OK) return hr;
+    if ((hr = WsWriteStartElement( writer, &prefix, &envelope, &ns_env, NULL )) != S_OK) return hr;
+
+    if (msg->version_addr == WS_ADDRESSING_VERSION_TRANSPORT)
+        hr = write_headers_transport( msg, &ns_env, writer );
+    else
+        hr = write_headers( msg, &ns_env, &ns_addr, writer );
+    if (hr != S_OK) return hr;
+
+    return WsWriteStartElement( writer, &prefix, &body, &ns_env, NULL ); /* <s:Body> */
 }
 
 static HRESULT write_envelope_end( WS_XML_WRITER *writer )
@@ -1067,5 +1108,127 @@ HRESULT WINAPI WsRemoveCustomHeader( WS_MESSAGE *handle, const WS_XML_STRING *na
     }
 
     if (removed) return write_envelope( msg );
+    return S_OK;
+}
+
+static WCHAR *build_http_header( const WCHAR *name, const WCHAR *value, ULONG *ret_len )
+{
+    static const WCHAR fmtW[] = {'%','s',':',' ','%','s',0};
+    WCHAR *ret = heap_alloc( (strlenW(name) + strlenW(value) + 3) * sizeof(WCHAR) );
+    if (ret) *ret_len = sprintfW( ret, fmtW, name, value );
+    return ret;
+}
+
+HRESULT message_insert_http_headers( WS_MESSAGE *handle, HINTERNET req )
+{
+    static const WCHAR contenttypeW[] =
+        {'C','o','n','t','e','n','t','-','T','y','p','e',0};
+    static const WCHAR soapxmlW[] =
+        {'a','p','p','l','i','c','a','t','i','o','n','/','s','o','a','p','+','x','m','l',0};
+    static const WCHAR textxmlW[] =
+        {'t','e','x','t','/','x','m','l',0};
+    static const WCHAR charsetW[] =
+        {'c','h','a','r','s','e','t','=','u','t','f','-','8',0};
+    struct msg *msg = (struct msg *)handle;
+    WCHAR *header, *buf;
+    ULONG len;
+    BOOL ret;
+
+    switch (msg->version_env)
+    {
+    case WS_ENVELOPE_VERSION_SOAP_1_1:
+        header = build_http_header( contenttypeW, textxmlW, &len );
+        break;
+
+    case WS_ENVELOPE_VERSION_SOAP_1_2:
+        header = build_http_header( contenttypeW, soapxmlW, &len );
+        break;
+
+    default:
+        FIXME( "unhandled envelope version %u\n", msg->version_env );
+        return E_NOTIMPL;
+    }
+    if (!header) return E_OUTOFMEMORY;
+
+    ret = WinHttpAddRequestHeaders( req, header, len, WINHTTP_ADDREQ_FLAG_ADD );
+    heap_free( header );
+    if (!ret) return HRESULT_FROM_WIN32( GetLastError() );
+
+    if (!(header = build_http_header( contenttypeW, charsetW, &len ))) return E_OUTOFMEMORY;
+    ret = WinHttpAddRequestHeaders( req, header, len, WINHTTP_ADDREQ_FLAG_COALESCE_WITH_SEMICOLON );
+    heap_free( header );
+    if (!ret) return HRESULT_FROM_WIN32( GetLastError() );
+
+    switch (msg->version_env)
+    {
+    case WS_ENVELOPE_VERSION_SOAP_1_1:
+    {
+        static const WCHAR soapactionW[] = {'S','O','A','P','A','c','t','i','o','n',0};
+
+        if (!(len = msg->action.length)) break;
+        if (!(buf = heap_alloc( (len + 3) * sizeof(WCHAR) ))) return E_OUTOFMEMORY;
+        buf[0] = '"';
+        memcpy( buf + 1, msg->action.chars, len * sizeof(WCHAR) );
+        buf[len + 1] = '"';
+        buf[len + 2] = 0;
+        header = build_http_header( soapactionW, buf, &len );
+        heap_free( buf );
+        if (!header) return E_OUTOFMEMORY;
+
+        ret = WinHttpAddRequestHeaders( req, header, len, WINHTTP_ADDREQ_FLAG_ADD );
+        heap_free( header );
+        if (!ret) return HRESULT_FROM_WIN32( GetLastError() );
+        break;
+    }
+    case WS_ENVELOPE_VERSION_SOAP_1_2:
+    {
+        static const WCHAR actionW[] = {'a','c','t','i','o','n','=','"'};
+        ULONG len_action = sizeof(actionW)/sizeof(actionW[0]);
+
+        if (!(len = msg->action.length)) break;
+        if (!(buf = heap_alloc( (len + len_action + 2) * sizeof(WCHAR) ))) return E_OUTOFMEMORY;
+        memcpy( buf, actionW, len_action * sizeof(WCHAR) );
+        memcpy( buf + len_action, msg->action.chars, len * sizeof(WCHAR) );
+        len += len_action;
+        buf[len++] = '"';
+        buf[len] = 0;
+        header = build_http_header( contenttypeW, buf, &len );
+        heap_free( buf );
+        if (!header) return E_OUTOFMEMORY;
+
+        ret = WinHttpAddRequestHeaders( req, header, len, WINHTTP_ADDREQ_FLAG_COALESCE_WITH_SEMICOLON );
+        heap_free( header );
+        if (!ret) return HRESULT_FROM_WIN32( GetLastError() );
+        break;
+    }
+    default:
+        FIXME( "unhandled envelope version %u\n", msg->version_env );
+        return E_NOTIMPL;
+    }
+
+    return S_OK;
+}
+
+HRESULT message_set_action( WS_MESSAGE *handle, const WS_XML_STRING *action )
+{
+    struct msg *msg = (struct msg *)handle;
+    WCHAR *chars;
+    int len;
+
+    if (!action || !action->length)
+    {
+        heap_free( msg->action.chars );
+        msg->action.chars  = NULL;
+        msg->action.length = 0;
+        return S_OK;
+    }
+    len = MultiByteToWideChar( CP_UTF8, 0, (char *)action->bytes, action->length, NULL, 0 );
+    if (!(chars = heap_alloc( len * sizeof(WCHAR) ))) return E_OUTOFMEMORY;
+    MultiByteToWideChar( CP_UTF8, 0, (char *)action->bytes, action->length, chars, len );
+
+    heap_free( msg->action.chars );
+    msg->action.chars  = chars;
+    msg->action.length = len;
+
     return S_OK;
 }

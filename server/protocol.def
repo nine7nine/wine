@@ -3162,16 +3162,15 @@ enum caret_state
 @REQ(open_clipboard)
     user_handle_t  window;         /* clipboard window */
 @REPLY
-    int            owner;          /* is the process already the owner? */
+    user_handle_t  owner;          /* current clipboard owner */
 @END
 
 
 /* Close the clipboard */
 @REQ(close_clipboard)
-    int            changed;        /* did it change since the open? */
 @REPLY
     user_handle_t  viewer;         /* first clipboard viewer */
-    int            owner;          /* is the process already the owner? */
+    user_handle_t  owner;          /* current clipboard owner */
 @END
 
 
@@ -3200,11 +3199,53 @@ enum caret_state
 @END
 
 
+/* Add a data format to the clipboard */
+@REQ(set_clipboard_data)
+    unsigned int   format;         /* clipboard format of the data */
+    unsigned int   lcid;           /* locale id to use for synthesizing text formats */
+    VARARG(data,bytes);            /* data contents */
+@REPLY
+    unsigned int   seqno;          /* sequence number for the set data */
+@END
+
+
+/* Fetch a data format from the clipboard */
+@REQ(get_clipboard_data)
+    unsigned int   format;         /* clipboard format of the data */
+    int            cached;         /* do we already have it in the client-side cache? */
+    unsigned int   seqno;          /* sequence number for the data in the cache */
+@REPLY
+    unsigned int   from;           /* for synthesized data, format to generate it from */
+    user_handle_t  owner;          /* clipboard owner for delayed-rendered formats */
+    unsigned int   seqno;          /* sequence number for the originally set data */
+    data_size_t    total;          /* total data size */
+    VARARG(data,bytes);            /* data contents */
+@END
+
+
+/* Retrieve a list of available formats */
+@REQ(get_clipboard_formats)
+    unsigned int   format;         /* specific format to query, return all if 0 */
+@REPLY
+    unsigned int   count;          /* count of available formats */
+    VARARG(formats,uints);         /* array of available formats */
+@END
+
+
+/* Retrieve the next available format */
+@REQ(enum_clipboard_formats)
+    unsigned int   previous;       /* previous format, or first if 0 */
+@REPLY
+    unsigned int   format;         /* next format */
+@END
+
+
 /* Release ownership of the clipboard */
 @REQ(release_clipboard)
     user_handle_t  owner;          /* clipboard owner to release */
 @REPLY
     user_handle_t  viewer;         /* first clipboard viewer */
+    user_handle_t  owner;          /* current clipboard owner */
 @END
 
 

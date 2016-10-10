@@ -239,7 +239,9 @@ extern void X11DRV_XDND_EnterEvent( HWND hWnd, XClientMessageEvent *event ) DECL
 extern void X11DRV_XDND_PositionEvent( HWND hWnd, XClientMessageEvent *event ) DECLSPEC_HIDDEN;
 extern void X11DRV_XDND_DropEvent( HWND hWnd, XClientMessageEvent *event ) DECLSPEC_HIDDEN;
 extern void X11DRV_XDND_LeaveEvent( HWND hWnd, XClientMessageEvent *event ) DECLSPEC_HIDDEN;
-extern HANDLE X11DRV_CLIPBOARD_ImportSelection(Display *d, Atom target, Window w, Atom prop, UINT *windowsFormat) DECLSPEC_HIDDEN;
+extern void X11DRV_CLIPBOARD_ImportSelection( Display *display, Window win, Atom selection,
+                                              Atom *targets, UINT count,
+                                              void (*callback)( Atom, UINT, HANDLE )) DECLSPEC_HIDDEN;
 
 /**************************************************************************
  * X11 GDI driver
@@ -383,6 +385,7 @@ extern int copy_default_colors DECLSPEC_HIDDEN;
 extern int alloc_system_colors DECLSPEC_HIDDEN;
 extern int xrender_error_base DECLSPEC_HIDDEN;
 extern HMODULE x11drv_module DECLSPEC_HIDDEN;
+extern Display *clipboard_display DECLSPEC_HIDDEN;
 
 /* atoms */
 
@@ -397,6 +400,7 @@ enum x11drv_atoms
     XATOM_SELECTION_DATA,
     XATOM_TARGETS,
     XATOM_TEXT,
+    XATOM_TIMESTAMP,
     XATOM_UTF8_STRING,
     XATOM_RAW_ASCENT,
     XATOM_RAW_DESCENT,
@@ -453,24 +457,11 @@ enum x11drv_atoms
     XATOM_XdndActionAsk,
     XATOM_XdndActionPrivate,
     XATOM_XdndSelection,
-    XATOM_XdndTarget,
     XATOM_XdndTypeList,
     XATOM_HTML_Format,
-    XATOM_WCF_BITMAP,
-    XATOM_WCF_DIB,
-    XATOM_WCF_DIBV5,
     XATOM_WCF_DIF,
-    XATOM_WCF_DSPBITMAP,
-    XATOM_WCF_DSPENHMETAFILE,
-    XATOM_WCF_DSPMETAFILEPICT,
-    XATOM_WCF_DSPTEXT,
     XATOM_WCF_ENHMETAFILE,
     XATOM_WCF_HDROP,
-    XATOM_WCF_LOCALE,
-    XATOM_WCF_METAFILEPICT,
-    XATOM_WCF_OEMTEXT,
-    XATOM_WCF_OWNERDISPLAY,
-    XATOM_WCF_PALETTE,
     XATOM_WCF_PENDATA,
     XATOM_WCF_RIFF,
     XATOM_WCF_SYLK,
@@ -520,7 +511,7 @@ extern DWORD EVENT_x11_time_to_win32_time(Time time) DECLSPEC_HIDDEN;
 /* X11 driver private messages, must be in the range 0x80001000..0x80001fff */
 enum x11drv_window_messages
 {
-    WM_X11DRV_ACQUIRE_SELECTION = 0x80001000,
+    WM_X11DRV_UPDATE_CLIPBOARD = 0x80001000,
     WM_X11DRV_SET_WIN_REGION,
     WM_X11DRV_RESIZE_DESKTOP,
     WM_X11DRV_SET_CURSOR,
@@ -588,6 +579,7 @@ extern void set_window_visual( struct x11drv_win_data *data, const XVisualInfo *
 extern void change_systray_owner( Display *display, Window systray_window ) DECLSPEC_HIDDEN;
 extern void update_systray_balloon_position(void) DECLSPEC_HIDDEN;
 extern HWND create_foreign_window( Display *display, Window window ) DECLSPEC_HIDDEN;
+extern BOOL update_clipboard( HWND hwnd ) DECLSPEC_HIDDEN;
 
 static inline void mirror_rect( const RECT *window_rect, RECT *rect )
 {
@@ -605,8 +597,6 @@ extern XContext win_data_context DECLSPEC_HIDDEN;
 extern XContext cursor_context DECLSPEC_HIDDEN;
 
 extern void X11DRV_InitClipboard(void) DECLSPEC_HIDDEN;
-extern void X11DRV_AcquireClipboard(HWND hWndClipWindow) DECLSPEC_HIDDEN;
-extern void X11DRV_ResetSelectionOwner(void) DECLSPEC_HIDDEN;
 extern void CDECL X11DRV_SetFocus( HWND hwnd ) DECLSPEC_HIDDEN;
 extern void set_window_cursor( Window window, HCURSOR handle ) DECLSPEC_HIDDEN;
 extern void sync_window_cursor( Window window ) DECLSPEC_HIDDEN;

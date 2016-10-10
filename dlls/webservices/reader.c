@@ -1166,6 +1166,8 @@ static HRESULT parse_name( const unsigned char *str, unsigned int len,
 
 static int codepoint_to_utf8( int cp, unsigned char *dst )
 {
+    if (!cp)
+        return -1;
     if (cp < 0x80)
     {
         *dst = cp;
@@ -1188,6 +1190,7 @@ static int codepoint_to_utf8( int cp, unsigned char *dst )
         dst[0] = 0xe0 | cp;
         return 3;
     }
+    if (cp >= 0x110000) return -1;
     dst[3] = 0x80 | (cp & 0x3f);
     cp >>= 6;
     dst[2] = 0x80 | (cp & 0x3f);
@@ -1247,23 +1250,45 @@ static HRESULT decode_text( const unsigned char *str, ULONG len, unsigned char *
                 int len_utf8, cp = 0;
 
                 p++; len--;
-                if (!len || *p != 'x') return WS_E_INVALID_FORMAT;
-                p++; len--;
-
-                start = len;
-                while (len && isxdigit( *p )) { p++; len--; };
                 if (!len) return WS_E_INVALID_FORMAT;
-
-                p -= nb_digits = start - len;
-                if (!nb_digits || nb_digits > 5 || p[nb_digits] != ';') return WS_E_INVALID_FORMAT;
-                for (i = 0; i < nb_digits; i++)
+                else if (*p == 'x')
                 {
-                    cp *= 16;
-                    if (*p >= '0' && *p <= '9') cp += *p - '0';
-                    else if (*p >= 'a' && *p <= 'f') cp += *p - 'a' + 10;
-                    else cp += *p - 'A' + 10;
-                    p++;
+                    p++; len--;
+
+                    start = len;
+                    while (len && isxdigit( *p )) { p++; len--; };
+                    if (!len) return WS_E_INVALID_FORMAT;
+
+                    p -= nb_digits = start - len;
+                    if (!nb_digits || nb_digits > 6 || p[nb_digits] != ';') return WS_E_INVALID_FORMAT;
+                    for (i = 0; i < nb_digits; i++)
+                    {
+                        cp *= 16;
+                        if (*p >= '0' && *p <= '9') cp += *p - '0';
+                        else if (*p >= 'a' && *p <= 'f') cp += *p - 'a' + 10;
+                        else cp += *p - 'A' + 10;
+                        p++;
+                    }
                 }
+                else if (isdigit( *p ))
+                {
+                    while (len && *p == '0') { p++; len--; };
+                    if (!len) return WS_E_INVALID_FORMAT;
+
+                    start = len;
+                    while (len && isdigit( *p )) { p++; len--; };
+                    if (!len) return WS_E_INVALID_FORMAT;
+
+                    p -= nb_digits = start - len;
+                    if (!nb_digits || nb_digits > 7 || p[nb_digits] != ';') return WS_E_INVALID_FORMAT;
+                    for (i = 0; i < nb_digits; i++)
+                    {
+                        cp *= 10;
+                        cp += *p - '0';
+                        p++;
+                    }
+                }
+                else return WS_E_INVALID_FORMAT;
                 p++; len--;
                 if ((len_utf8 = codepoint_to_utf8( cp, q )) < 0) return WS_E_INVALID_FORMAT;
                 *ret_len += len_utf8;
@@ -2468,11 +2493,77 @@ static HRESULT str_to_guid( const unsigned char *str, ULONG len, GUID *ret )
     return S_OK;
 }
 
-#define TICKS_PER_SEC   10000000
-#define TICKS_PER_MIN   (60 * (ULONGLONG)TICKS_PER_SEC)
-#define TICKS_PER_HOUR  (3600 * (ULONGLONG)TICKS_PER_SEC)
-#define TICKS_PER_DAY   (86400 * (ULONGLONG)TICKS_PER_SEC)
-#define TICKS_MAX       3155378975999999999
+static inline unsigned char decode_char( unsigned char c )
+{
+    if (c >= 'A' && c <= 'Z') return c - 'A';
+    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+    if (c >= '0' && c <= '9') return c - '0' + 52;
+    if (c == '+') return 62;
+    if (c == '/') return 63;
+    return 64;
+}
+
+static ULONG decode_base64( const unsigned char *base64, ULONG len, unsigned char *buf )
+{
+    ULONG i = 0;
+    unsigned char c0, c1, c2, c3;
+    const unsigned char *p = base64;
+
+    while (len > 4)
+    {
+        if ((c0 = decode_char( p[0] )) > 63) return 0;
+        if ((c1 = decode_char( p[1] )) > 63) return 0;
+        if ((c2 = decode_char( p[2] )) > 63) return 0;
+        if ((c3 = decode_char( p[3] )) > 63) return 0;
+        buf[i + 0] = (c0 << 2) | (c1 >> 4);
+        buf[i + 1] = (c1 << 4) | (c2 >> 2);
+        buf[i + 2] = (c2 << 6) |  c3;
+        len -= 4;
+        i += 3;
+        p += 4;
+    }
+    if (p[2] == '=')
+    {
+        if ((c0 = decode_char( p[0] )) > 63) return 0;
+        if ((c1 = decode_char( p[1] )) > 63) return 0;
+        buf[i] = (c0 << 2) | (c1 >> 4);
+        i++;
+    }
+    else if (p[3] == '=')
+    {
+        if ((c0 = decode_char( p[0] )) > 63) return 0;
+        if ((c1 = decode_char( p[1] )) > 63) return 0;
+        if ((c2 = decode_char( p[2] )) > 63) return 0;
+        buf[i + 0] = (c0 << 2) | (c1 >> 4);
+        buf[i + 1] = (c1 << 4) | (c2 >> 2);
+        i += 2;
+    }
+    else
+    {
+        if ((c0 = decode_char( p[0] )) > 63) return 0;
+        if ((c1 = decode_char( p[1] )) > 63) return 0;
+        if ((c2 = decode_char( p[2] )) > 63) return 0;
+        if ((c3 = decode_char( p[3] )) > 63) return 0;
+        buf[i + 0] = (c0 << 2) | (c1 >> 4);
+        buf[i + 1] = (c1 << 4) | (c2 >> 2);
+        buf[i + 2] = (c2 << 6) |  c3;
+        i += 3;
+    }
+    return i;
+}
+
+static HRESULT str_to_bytes( const unsigned char *str, ULONG len, WS_HEAP *heap, WS_BYTES *ret )
+{
+    const unsigned char *p = str;
+
+    while (len && read_isspace( *p )) { p++; len--; }
+    while (len && read_isspace( p[len - 1] )) { len--; }
+
+    if (len % 4) return WS_E_INVALID_FORMAT;
+    if (!(ret->bytes = ws_alloc( heap, len * 3 / 4 ))) return WS_E_QUOTA_EXCEEDED;
+    ret->length = decode_base64( p, len, ret->bytes );
+    return S_OK;
+}
 
 static const int month_offsets[2][12] =
 {
@@ -2480,20 +2571,9 @@ static const int month_offsets[2][12] =
     {0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335}
 };
 
-static const int month_days[2][12] =
-{
-    {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31},
-    {31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
-};
-
-static inline int is_leap_year( int year )
-{
-    return !(year % 4) && (year % 100 || !(year % 400));
-}
-
 static inline int valid_day( int year, int month, int day )
 {
-    return day > 0 && day <= month_days[is_leap_year( year )][month - 1];
+    return day > 0 && day <= month_days[leap_year( year )][month - 1];
 }
 
 static inline int leap_days_before( int year )
@@ -2585,7 +2665,7 @@ static HRESULT str_to_datetime( const unsigned char *bytes, ULONG len, WS_DATETI
     else return WS_E_INVALID_FORMAT;
 
     ret->ticks = ((year - 1) * 365 + leap_days_before( year )) * TICKS_PER_DAY;
-    ret->ticks += month_offsets[is_leap_year( year )][month - 1] * TICKS_PER_DAY;
+    ret->ticks += month_offsets[leap_year( year )][month - 1] * TICKS_PER_DAY;
     ret->ticks += (day - 1) * TICKS_PER_DAY;
     ret->ticks += hour * TICKS_PER_HOUR;
     ret->ticks += min * TICKS_PER_MIN;
@@ -2609,8 +2689,6 @@ static HRESULT str_to_datetime( const unsigned char *bytes, ULONG len, WS_DATETI
 
     return S_OK;
 }
-
-#define TICKS_1601_01_01    504911232000000000
 
 /**************************************************************************
  *          WsDateTimeToFileTime               [webservices.@]
@@ -2806,6 +2884,9 @@ static HRESULT read_type_bool( struct reader *reader, WS_TYPE_MAPPING mapping,
     {
     case WS_READ_REQUIRED_VALUE:
         if (!found) return WS_E_INVALID_FORMAT;
+        /* fall through */
+
+    case WS_READ_NILLABLE_VALUE:
         if (size != sizeof(BOOL)) return E_INVALIDARG;
         *(BOOL *)ret = val;
         break;
@@ -2815,6 +2896,7 @@ static HRESULT read_type_bool( struct reader *reader, WS_TYPE_MAPPING mapping,
         /* fall through */
 
     case WS_READ_OPTIONAL_POINTER:
+    case WS_READ_NILLABLE_POINTER:
     {
         BOOL *heap_val = NULL;
         if (size != sizeof(heap_val)) return E_INVALIDARG;
@@ -2841,7 +2923,7 @@ static HRESULT read_type_int8( struct reader *reader, WS_TYPE_MAPPING mapping,
 {
     WS_XML_UTF8_TEXT *utf8;
     HRESULT hr;
-    INT64 val;
+    INT64 val = 0;
     BOOL found;
 
     if (desc)
@@ -2857,6 +2939,9 @@ static HRESULT read_type_int8( struct reader *reader, WS_TYPE_MAPPING mapping,
     {
     case WS_READ_REQUIRED_VALUE:
         if (!found) return WS_E_INVALID_FORMAT;
+        /* fall through */
+
+    case WS_READ_NILLABLE_VALUE:
         if (size != sizeof(INT8)) return E_INVALIDARG;
         *(INT8 *)ret = val;
         break;
@@ -2866,6 +2951,7 @@ static HRESULT read_type_int8( struct reader *reader, WS_TYPE_MAPPING mapping,
         /* fall through */
 
     case WS_READ_OPTIONAL_POINTER:
+    case WS_READ_NILLABLE_POINTER:
     {
         INT8 *heap_val = NULL;
         if (size != sizeof(heap_val)) return E_INVALIDARG;
@@ -2892,7 +2978,7 @@ static HRESULT read_type_int16( struct reader *reader, WS_TYPE_MAPPING mapping,
 {
     WS_XML_UTF8_TEXT *utf8;
     HRESULT hr;
-    INT64 val;
+    INT64 val = 0;
     BOOL found;
 
     if (desc)
@@ -2908,6 +2994,9 @@ static HRESULT read_type_int16( struct reader *reader, WS_TYPE_MAPPING mapping,
     {
     case WS_READ_REQUIRED_VALUE:
         if (!found) return WS_E_INVALID_FORMAT;
+        /* fall through */
+
+    case WS_READ_NILLABLE_VALUE:
         if (size != sizeof(INT16)) return E_INVALIDARG;
         *(INT16 *)ret = val;
         break;
@@ -2917,6 +3006,7 @@ static HRESULT read_type_int16( struct reader *reader, WS_TYPE_MAPPING mapping,
         /* fall through */
 
     case WS_READ_OPTIONAL_POINTER:
+    case WS_READ_NILLABLE_POINTER:
     {
         INT16 *heap_val = NULL;
         if (size != sizeof(heap_val)) return E_INVALIDARG;
@@ -2943,7 +3033,7 @@ static HRESULT read_type_int32( struct reader *reader, WS_TYPE_MAPPING mapping,
 {
     WS_XML_UTF8_TEXT *utf8;
     HRESULT hr;
-    INT64 val;
+    INT64 val = 0;
     BOOL found;
 
     if (desc)
@@ -2959,6 +3049,9 @@ static HRESULT read_type_int32( struct reader *reader, WS_TYPE_MAPPING mapping,
     {
     case WS_READ_REQUIRED_VALUE:
         if (!found) return WS_E_INVALID_FORMAT;
+        /* fall through */
+
+    case WS_READ_NILLABLE_VALUE:
         if (size != sizeof(INT32)) return E_INVALIDARG;
         *(INT32 *)ret = val;
         break;
@@ -2968,6 +3061,7 @@ static HRESULT read_type_int32( struct reader *reader, WS_TYPE_MAPPING mapping,
         /* fall through */
 
     case WS_READ_OPTIONAL_POINTER:
+    case WS_READ_NILLABLE_POINTER:
     {
         INT32 *heap_val = NULL;
         if (size != sizeof(heap_val)) return E_INVALIDARG;
@@ -2994,7 +3088,7 @@ static HRESULT read_type_int64( struct reader *reader, WS_TYPE_MAPPING mapping,
 {
     WS_XML_UTF8_TEXT *utf8;
     HRESULT hr;
-    INT64 val;
+    INT64 val = 0;
     BOOL found;
 
     if (desc)
@@ -3010,6 +3104,9 @@ static HRESULT read_type_int64( struct reader *reader, WS_TYPE_MAPPING mapping,
     {
     case WS_READ_REQUIRED_VALUE:
         if (!found) return WS_E_INVALID_FORMAT;
+        /* fall through */
+
+    case WS_READ_NILLABLE_VALUE:
         if (size != sizeof(INT64)) return E_INVALIDARG;
         *(INT64 *)ret = val;
         break;
@@ -3019,6 +3116,7 @@ static HRESULT read_type_int64( struct reader *reader, WS_TYPE_MAPPING mapping,
         /* fall through */
 
     case WS_READ_OPTIONAL_POINTER:
+    case WS_READ_NILLABLE_POINTER:
     {
         INT64 *heap_val = NULL;
         if (size != sizeof(heap_val)) return E_INVALIDARG;
@@ -3045,7 +3143,7 @@ static HRESULT read_type_uint8( struct reader *reader, WS_TYPE_MAPPING mapping,
 {
     WS_XML_UTF8_TEXT *utf8;
     HRESULT hr;
-    UINT64 val;
+    UINT64 val = 0;
     BOOL found;
 
     if (desc)
@@ -3061,6 +3159,9 @@ static HRESULT read_type_uint8( struct reader *reader, WS_TYPE_MAPPING mapping,
     {
     case WS_READ_REQUIRED_VALUE:
         if (!found) return WS_E_INVALID_FORMAT;
+        /* fall through */
+
+    case WS_READ_NILLABLE_VALUE:
         if (size != sizeof(UINT8)) return E_INVALIDARG;
         *(UINT8 *)ret = val;
         break;
@@ -3070,6 +3171,7 @@ static HRESULT read_type_uint8( struct reader *reader, WS_TYPE_MAPPING mapping,
         /* fall through */
 
     case WS_READ_OPTIONAL_POINTER:
+    case WS_READ_NILLABLE_POINTER:
     {
         UINT8 *heap_val = NULL;
         if (size != sizeof(heap_val)) return E_INVALIDARG;
@@ -3096,7 +3198,7 @@ static HRESULT read_type_uint16( struct reader *reader, WS_TYPE_MAPPING mapping,
 {
     WS_XML_UTF8_TEXT *utf8;
     HRESULT hr;
-    UINT64 val;
+    UINT64 val = 0;
     BOOL found;
 
     if (desc)
@@ -3112,6 +3214,9 @@ static HRESULT read_type_uint16( struct reader *reader, WS_TYPE_MAPPING mapping,
     {
     case WS_READ_REQUIRED_VALUE:
         if (!found) return WS_E_INVALID_FORMAT;
+        /* fall through */
+
+    case WS_READ_NILLABLE_VALUE:
         if (size != sizeof(UINT16)) return E_INVALIDARG;
         *(UINT16 *)ret = val;
         break;
@@ -3121,6 +3226,7 @@ static HRESULT read_type_uint16( struct reader *reader, WS_TYPE_MAPPING mapping,
         /* fall through */
 
     case WS_READ_OPTIONAL_POINTER:
+    case WS_READ_NILLABLE_POINTER:
     {
         UINT16 *heap_val = NULL;
         if (size != sizeof(heap_val)) return E_INVALIDARG;
@@ -3147,7 +3253,7 @@ static HRESULT read_type_uint32( struct reader *reader, WS_TYPE_MAPPING mapping,
 {
     WS_XML_UTF8_TEXT *utf8;
     HRESULT hr;
-    UINT64 val;
+    UINT64 val = 0;
     BOOL found;
 
     if (desc)
@@ -3163,6 +3269,9 @@ static HRESULT read_type_uint32( struct reader *reader, WS_TYPE_MAPPING mapping,
     {
     case WS_READ_REQUIRED_VALUE:
         if (!found) return WS_E_INVALID_FORMAT;
+        /* fall through */
+
+    case WS_READ_NILLABLE_VALUE:
         if (size != sizeof(UINT32)) return E_INVALIDARG;
         *(UINT32 *)ret = val;
         break;
@@ -3172,6 +3281,7 @@ static HRESULT read_type_uint32( struct reader *reader, WS_TYPE_MAPPING mapping,
         /* fall through */
 
     case WS_READ_OPTIONAL_POINTER:
+    case WS_READ_NILLABLE_POINTER:
     {
         UINT32 *heap_val = NULL;
         if (size != sizeof(heap_val)) return E_INVALIDARG;
@@ -3198,7 +3308,7 @@ static HRESULT read_type_uint64( struct reader *reader, WS_TYPE_MAPPING mapping,
 {
     WS_XML_UTF8_TEXT *utf8;
     HRESULT hr;
-    UINT64 val;
+    UINT64 val = 0;
     BOOL found;
 
     if (desc)
@@ -3214,6 +3324,9 @@ static HRESULT read_type_uint64( struct reader *reader, WS_TYPE_MAPPING mapping,
     {
     case WS_READ_REQUIRED_VALUE:
         if (!found) return WS_E_INVALID_FORMAT;
+        /* fall through */
+
+    case WS_READ_NILLABLE_VALUE:
         if (size != sizeof(UINT64)) return E_INVALIDARG;
         *(UINT64 *)ret = val;
         break;
@@ -3223,6 +3336,7 @@ static HRESULT read_type_uint64( struct reader *reader, WS_TYPE_MAPPING mapping,
         /* fall through */
 
     case WS_READ_OPTIONAL_POINTER:
+    case WS_READ_NILLABLE_POINTER:
     {
         UINT64 *heap_val = NULL;
         if (size != sizeof(heap_val)) return E_INVALIDARG;
@@ -3261,6 +3375,9 @@ static HRESULT read_type_double( struct reader *reader, WS_TYPE_MAPPING mapping,
     {
     case WS_READ_REQUIRED_VALUE:
         if (!found) return WS_E_INVALID_FORMAT;
+        /* fall through */
+
+    case WS_READ_NILLABLE_VALUE:
         if (size != sizeof(double)) return E_INVALIDARG;
         *(double *)ret = val;
         break;
@@ -3270,6 +3387,7 @@ static HRESULT read_type_double( struct reader *reader, WS_TYPE_MAPPING mapping,
         /* fall through */
 
     case WS_READ_OPTIONAL_POINTER:
+    case WS_READ_NILLABLE_POINTER:
     {
         double *heap_val = NULL;
         if (size != sizeof(heap_val)) return E_INVALIDARG;
@@ -3314,6 +3432,7 @@ static HRESULT read_type_wsz( struct reader *reader, WS_TYPE_MAPPING mapping,
         /* fall through */
 
     case WS_READ_OPTIONAL_POINTER:
+    case WS_READ_NILLABLE_POINTER:
         if (size != sizeof(str)) return E_INVALIDARG;
         *ret = str;
         break;
@@ -3359,6 +3478,9 @@ static HRESULT read_type_enum( struct reader *reader, WS_TYPE_MAPPING mapping,
     {
     case WS_READ_REQUIRED_VALUE:
         if (!found) return WS_E_INVALID_FORMAT;
+        /* fall through */
+
+    case WS_READ_NILLABLE_VALUE:
         if (size != sizeof(int)) return E_INVALIDARG;
         *(int *)ret = val;
         break;
@@ -3368,6 +3490,7 @@ static HRESULT read_type_enum( struct reader *reader, WS_TYPE_MAPPING mapping,
         /* fall through */
 
     case WS_READ_OPTIONAL_POINTER:
+    case WS_READ_NILLABLE_POINTER:
     {
         int *heap_val = NULL;
         if (size != sizeof(heap_val)) return E_INVALIDARG;
@@ -3406,6 +3529,9 @@ static HRESULT read_type_datetime( struct reader *reader, WS_TYPE_MAPPING mappin
     {
     case WS_READ_REQUIRED_VALUE:
         if (!found) return WS_E_INVALID_FORMAT;
+        /* fall through */
+
+    case WS_READ_NILLABLE_VALUE:
         if (size != sizeof(WS_DATETIME)) return E_INVALIDARG;
         *(WS_DATETIME *)ret = val;
         break;
@@ -3415,6 +3541,7 @@ static HRESULT read_type_datetime( struct reader *reader, WS_TYPE_MAPPING mappin
         /* fall through */
 
     case WS_READ_OPTIONAL_POINTER:
+    case WS_READ_NILLABLE_POINTER:
     {
         WS_DATETIME *heap_val = NULL;
         if (size != sizeof(heap_val)) return E_INVALIDARG;
@@ -3440,7 +3567,7 @@ static HRESULT read_type_guid( struct reader *reader, WS_TYPE_MAPPING mapping,
                                WS_HEAP *heap, void *ret, ULONG size )
 {
     WS_XML_UTF8_TEXT *utf8;
-    GUID val;
+    GUID val = {0};
     HRESULT hr;
     BOOL found;
 
@@ -3453,6 +3580,9 @@ static HRESULT read_type_guid( struct reader *reader, WS_TYPE_MAPPING mapping,
     {
     case WS_READ_REQUIRED_VALUE:
         if (!found) return WS_E_INVALID_FORMAT;
+        /* fall through */
+
+    case WS_READ_NILLABLE_VALUE:
         if (size != sizeof(GUID)) return E_INVALIDARG;
         *(GUID *)ret = val;
         break;
@@ -3462,6 +3592,7 @@ static HRESULT read_type_guid( struct reader *reader, WS_TYPE_MAPPING mapping,
         /* fall through */
 
     case WS_READ_OPTIONAL_POINTER:
+    case WS_READ_NILLABLE_POINTER:
     {
         GUID *heap_val = NULL;
         if (size != sizeof(heap_val)) return E_INVALIDARG;
@@ -3471,6 +3602,58 @@ static HRESULT read_type_guid( struct reader *reader, WS_TYPE_MAPPING mapping,
             *heap_val = val;
         }
         *(GUID **)ret = heap_val;
+        break;
+    }
+    default:
+        FIXME( "read option %u not supported\n", option );
+        return E_NOTIMPL;
+    }
+
+    return S_OK;
+}
+
+static HRESULT read_type_bytes( struct reader *reader, WS_TYPE_MAPPING mapping,
+                                const WS_XML_STRING *localname, const WS_XML_STRING *ns,
+                                const WS_BYTES_DESCRIPTION *desc, WS_READ_OPTION option,
+                                WS_HEAP *heap, void *ret, ULONG size )
+{
+    WS_XML_UTF8_TEXT *utf8;
+    WS_BYTES val = {0};
+    HRESULT hr;
+    BOOL found;
+
+    if (desc) FIXME( "ignoring description\n" );
+
+    if ((hr = read_get_text( reader, mapping, localname, ns, &utf8, &found )) != S_OK) return hr;
+    if (found && (hr = str_to_bytes( utf8->value.bytes, utf8->value.length, heap, &val )) != S_OK)
+        return hr;
+
+    switch (option)
+    {
+    case WS_READ_REQUIRED_VALUE:
+        if (!found) return WS_E_INVALID_FORMAT;
+        /* fall through */
+
+    case WS_READ_NILLABLE_VALUE:
+        if (size != sizeof(WS_BYTES)) return E_INVALIDARG;
+        *(WS_BYTES *)ret = val;
+        break;
+
+    case WS_READ_REQUIRED_POINTER:
+        if (!found) return WS_E_INVALID_FORMAT;
+        /* fall through */
+
+    case WS_READ_OPTIONAL_POINTER:
+    case WS_READ_NILLABLE_POINTER:
+    {
+        WS_BYTES *heap_val = NULL;
+        if (size != sizeof(heap_val)) return E_INVALIDARG;
+        if (found)
+        {
+            if (!(heap_val = ws_alloc( heap, sizeof(*heap_val) ))) return WS_E_QUOTA_EXCEEDED;
+            *heap_val = val;
+        }
+        *(WS_BYTES **)ret = heap_val;
         break;
     }
     default:
@@ -3561,7 +3744,7 @@ static HRESULT read_type_next_element_node( struct reader *reader, const WS_XML_
     return WS_E_INVALID_FORMAT;
 }
 
-static ULONG get_type_size( WS_TYPE type, const WS_STRUCT_DESCRIPTION *desc )
+ULONG get_type_size( WS_TYPE type, const WS_STRUCT_DESCRIPTION *desc )
 {
     switch (type)
     {
@@ -3595,6 +3778,9 @@ static ULONG get_type_size( WS_TYPE type, const WS_STRUCT_DESCRIPTION *desc )
     case WS_WSZ_TYPE:
         return sizeof(WCHAR *);
 
+    case WS_BYTES_TYPE:
+        return sizeof(WS_BYTES);
+
     case WS_STRUCT_TYPE:
         return desc->size;
 
@@ -3604,8 +3790,15 @@ static ULONG get_type_size( WS_TYPE type, const WS_STRUCT_DESCRIPTION *desc )
     }
 }
 
-static WS_READ_OPTION get_array_read_option( WS_TYPE type )
+static WS_READ_OPTION get_field_read_option( WS_TYPE type, ULONG options )
 {
+    if (options & WS_FIELD_POINTER)
+    {
+        if (options & WS_FIELD_NILLABLE) return WS_READ_NILLABLE_POINTER;
+        if (options & WS_FIELD_OPTIONAL) return WS_READ_OPTIONAL_POINTER;
+        return WS_READ_REQUIRED_POINTER;
+    }
+
     switch (type)
     {
     case WS_BOOL_TYPE:
@@ -3618,13 +3811,17 @@ static WS_READ_OPTION get_array_read_option( WS_TYPE type )
     case WS_UINT32_TYPE:
     case WS_UINT64_TYPE:
     case WS_DOUBLE_TYPE:
-    case WS_ENUM_TYPE:
-    case WS_STRUCT_TYPE:
     case WS_DATETIME_TYPE:
     case WS_GUID_TYPE:
+    case WS_BYTES_TYPE:
+    case WS_STRUCT_TYPE:
+    case WS_ENUM_TYPE:
+        if (options & (WS_FIELD_OPTIONAL|WS_FIELD_NILLABLE)) return WS_READ_NILLABLE_VALUE;
         return WS_READ_REQUIRED_VALUE;
 
     case WS_WSZ_TYPE:
+        if (options & WS_FIELD_NILLABLE) return WS_READ_NILLABLE_POINTER;
+        if (options & WS_FIELD_OPTIONAL) return WS_READ_OPTIONAL_POINTER;
         return WS_READ_REQUIRED_POINTER;
 
     default:
@@ -3638,20 +3835,20 @@ static HRESULT read_type( struct reader *, WS_TYPE_MAPPING, WS_TYPE, const WS_XM
                           void *, ULONG );
 
 static HRESULT read_type_repeating_element( struct reader *reader, const WS_FIELD_DESCRIPTION *desc,
-                                            WS_HEAP *heap, void **ret, ULONG size, ULONG *count )
+                                            WS_HEAP *heap, void **ret, ULONG *count )
 {
     HRESULT hr;
     ULONG item_size, nb_items = 0, nb_allocated = 1, offset = 0;
     WS_READ_OPTION option;
     char *buf;
 
-    if (size != sizeof(void *) || !(option = get_array_read_option( desc->type ))) return E_INVALIDARG;
+    if (!(option = get_field_read_option( desc->type, desc->options ))) return E_INVALIDARG;
 
     /* wrapper element */
     if (desc->localName && ((hr = read_type_next_element_node( reader, desc->localName, desc->ns )) != S_OK))
         return hr;
 
-    if (option == WS_READ_REQUIRED_VALUE)
+    if (option == WS_READ_REQUIRED_VALUE || option == WS_READ_NILLABLE_VALUE)
         item_size = get_type_size( desc->type, desc->typeDescription );
     else
         item_size = sizeof(void *);
@@ -3710,35 +3907,6 @@ static HRESULT read_type_text( struct reader *reader, const WS_FIELD_DESCRIPTION
                       desc->typeDescription, option, heap, ret, size );
 }
 
-static WS_READ_OPTION get_field_read_option( WS_TYPE type )
-{
-    switch (type)
-    {
-    case WS_BOOL_TYPE:
-    case WS_INT8_TYPE:
-    case WS_INT16_TYPE:
-    case WS_INT32_TYPE:
-    case WS_INT64_TYPE:
-    case WS_UINT8_TYPE:
-    case WS_UINT16_TYPE:
-    case WS_UINT32_TYPE:
-    case WS_UINT64_TYPE:
-    case WS_DOUBLE_TYPE:
-    case WS_ENUM_TYPE:
-    case WS_DATETIME_TYPE:
-    case WS_GUID_TYPE:
-        return WS_READ_REQUIRED_VALUE;
-
-    case WS_WSZ_TYPE:
-    case WS_STRUCT_TYPE:
-        return WS_READ_REQUIRED_POINTER;
-
-    default:
-        FIXME( "unhandled type %u\n", type );
-        return 0;
-    }
-}
-
 static HRESULT read_type_struct_field( struct reader *reader, const WS_FIELD_DESCRIPTION *desc,
                                        WS_HEAP *heap, char *buf )
 {
@@ -3748,14 +3916,14 @@ static HRESULT read_type_struct_field( struct reader *reader, const WS_FIELD_DES
     HRESULT hr;
 
     if (!desc) return E_INVALIDARG;
-    if (desc->options & ~(WS_FIELD_POINTER | WS_FIELD_OPTIONAL))
+    if (desc->options & ~(WS_FIELD_POINTER|WS_FIELD_OPTIONAL|WS_FIELD_NILLABLE|WS_FIELD_NILLABLE_ITEM))
     {
         FIXME( "options %08x not supported\n", desc->options );
         return E_NOTIMPL;
     }
-    if (!(option = get_field_read_option( desc->type ))) return E_INVALIDARG;
+    if (!(option = get_field_read_option( desc->type, desc->options ))) return E_INVALIDARG;
 
-    if (option == WS_READ_REQUIRED_VALUE)
+    if (option == WS_READ_REQUIRED_VALUE || option == WS_READ_NILLABLE_VALUE)
         size = get_type_size( desc->type, desc->typeDescription );
     else
         size = sizeof(void *);
@@ -3776,7 +3944,7 @@ static HRESULT read_type_struct_field( struct reader *reader, const WS_FIELD_DES
     case WS_REPEATING_ELEMENT_FIELD_MAPPING:
     {
         ULONG count;
-        hr = read_type_repeating_element( reader, desc, heap, (void **)ptr, size, &count );
+        hr = read_type_repeating_element( reader, desc, heap, (void **)ptr, &count );
         if (hr == S_OK) *(ULONG *)(buf + desc->countOffset) = count;
         break;
     }
@@ -3789,16 +3957,20 @@ static HRESULT read_type_struct_field( struct reader *reader, const WS_FIELD_DES
         return E_NOTIMPL;
     }
 
-    if (hr == WS_E_INVALID_FORMAT && desc->options & WS_FIELD_OPTIONAL)
+    if (hr == WS_E_INVALID_FORMAT)
     {
         switch (option)
         {
         case WS_READ_REQUIRED_VALUE:
+        case WS_READ_REQUIRED_POINTER:
+            return WS_E_INVALID_FORMAT;
+
+        case WS_READ_NILLABLE_VALUE:
             if (desc->defaultValue) memcpy( ptr, desc->defaultValue->value, desc->defaultValue->valueSize );
-            else memset( ptr, 0, size );
             return S_OK;
 
-        case WS_READ_REQUIRED_POINTER:
+        case WS_READ_OPTIONAL_POINTER:
+        case WS_READ_NILLABLE_POINTER:
             *(void **)ptr = NULL;
             return S_OK;
 
@@ -3827,11 +3999,13 @@ static HRESULT read_type_struct( struct reader *reader, WS_TYPE_MAPPING mapping,
     {
     case WS_READ_REQUIRED_POINTER:
     case WS_READ_OPTIONAL_POINTER:
+    case WS_READ_NILLABLE_POINTER:
         if (size != sizeof(void *)) return E_INVALIDARG;
         if (!(buf = ws_alloc_zero( heap, desc->size ))) return WS_E_QUOTA_EXCEEDED;
         break;
 
     case WS_READ_REQUIRED_VALUE:
+    case WS_READ_NILLABLE_VALUE:
         if (size != desc->size) return E_INVALIDARG;
         buf = ret;
         break;
@@ -3859,7 +4033,8 @@ static HRESULT read_type_struct( struct reader *reader, WS_TYPE_MAPPING mapping,
         return S_OK;
 
     case WS_READ_OPTIONAL_POINTER:
-        if (hr != S_OK)
+    case WS_READ_NILLABLE_POINTER:
+        if (is_nil_value( buf, desc->size ))
         {
             ws_free( heap, buf );
             buf = NULL;
@@ -3868,6 +4043,7 @@ static HRESULT read_type_struct( struct reader *reader, WS_TYPE_MAPPING mapping,
         return S_OK;
 
     case WS_READ_REQUIRED_VALUE:
+    case WS_READ_NILLABLE_VALUE:
         return hr;
 
     default:
@@ -3901,11 +4077,6 @@ static HRESULT read_type( struct reader *reader, WS_TYPE_MAPPING mapping, WS_TYP
 
     switch (type)
     {
-    case WS_STRUCT_TYPE:
-        if ((hr = read_type_struct( reader, mapping, localname, ns, desc, option, heap, value, size )) != S_OK)
-            return hr;
-        break;
-
     case WS_BOOL_TYPE:
         if ((hr = read_type_bool( reader, mapping, localname, ns, desc, option, heap, value, size )) != S_OK)
             return hr;
@@ -3956,16 +4127,6 @@ static HRESULT read_type( struct reader *reader, WS_TYPE_MAPPING mapping, WS_TYP
             return hr;
         break;
 
-    case WS_WSZ_TYPE:
-        if ((hr = read_type_wsz( reader, mapping, localname, ns, desc, option, heap, value, size )) != S_OK)
-            return hr;
-        break;
-
-    case WS_ENUM_TYPE:
-        if ((hr = read_type_enum( reader, mapping, localname, ns, desc, option, heap, value, size )) != S_OK)
-            return hr;
-        break;
-
     case WS_DATETIME_TYPE:
         if ((hr = read_type_datetime( reader, mapping, localname, ns, desc, option, heap, value, size )) != S_OK)
             return hr;
@@ -3973,6 +4134,26 @@ static HRESULT read_type( struct reader *reader, WS_TYPE_MAPPING mapping, WS_TYP
 
     case WS_GUID_TYPE:
         if ((hr = read_type_guid( reader, mapping, localname, ns, desc, option, heap, value, size )) != S_OK)
+            return hr;
+        break;
+
+    case WS_WSZ_TYPE:
+        if ((hr = read_type_wsz( reader, mapping, localname, ns, desc, option, heap, value, size )) != S_OK)
+            return hr;
+        break;
+
+    case WS_BYTES_TYPE:
+        if ((hr = read_type_bytes( reader, mapping, localname, ns, desc, option, heap, value, size )) != S_OK)
+            return hr;
+        break;
+
+    case WS_STRUCT_TYPE:
+        if ((hr = read_type_struct( reader, mapping, localname, ns, desc, option, heap, value, size )) != S_OK)
+            return hr;
+        break;
+
+    case WS_ENUM_TYPE:
+        if ((hr = read_type_enum( reader, mapping, localname, ns, desc, option, heap, value, size )) != S_OK)
             return hr;
         break;
 

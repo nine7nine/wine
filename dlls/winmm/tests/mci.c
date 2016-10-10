@@ -668,10 +668,6 @@ static void test_recordWAVE(HWND hwnd)
     ok(!err,"mci status samplespersec returned %s\n", dbg_mcierr(err));
     if(!err) ok(!strcmp(buf,"11025"), "mci status samplespersec expected 11025, got: %s\n", buf);
 
-    /* MCI seems to solely support PCM, no need for ACM conversion. */
-    err = mciSendStringA("set x format tag 2", NULL, 0, NULL);
-    ok(err==MCIERR_OUTOFRANGE,"mci set format tag 2 returned %s\n", dbg_mcierr(err));
-
     /* MCI appears to scan the available devices for support of this format,
      * returning MCIERR_OUTOFRANGE on machines with no sound.
      * However some w2k8/w7 machines return no error when there's no wave
@@ -1116,6 +1112,8 @@ static void test_asyncWAVE(HWND hwnd)
     trace("position after resume: %sms\n",buf);
     test_notification(hwnd,"play (aborted by pause/resume/pause)",0);
 
+    /* A small Sleep() here prevents the notification test failing with MCI_NOTIFY_SUCCESSFUL */
+    Sleep(10);
     err = mciSendStringA("close mysound wait", NULL, 0, NULL);
     ok(!err,"mci close wait returned %s\n", dbg_mcierr(err));
     test_notification(hwnd,"play (aborted by close)",MCI_NOTIFY_ABORTED);

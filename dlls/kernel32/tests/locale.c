@@ -38,6 +38,7 @@
 
 static const WCHAR upper_case[] = {'\t','J','U','S','T','!',' ','A',',',' ','T','E','S','T',';',' ','S','T','R','I','N','G',' ','1','/','*','+','-','.','\r','\n',0};
 static const WCHAR lower_case[] = {'\t','j','u','s','t','!',' ','a',',',' ','t','e','s','t',';',' ','s','t','r','i','n','g',' ','1','/','*','+','-','.','\r','\n',0};
+static const WCHAR title_case[] = {'\t','J','u','s','t','!',' ','A',',',' ','T','e','s','t',';',' ','S','t','r','i','n','g',' ','1','/','*','+','-','.','\r','\n',0};
 static const WCHAR symbols_stripped[] = {'j','u','s','t','a','t','e','s','t','s','t','r','i','n','g','1',0};
 static const WCHAR localeW[] = {'e','n','-','U','S',0};
 static const WCHAR fooW[] = {'f','o','o',0};
@@ -2195,9 +2196,37 @@ static void test_CompareStringEx(void)
 
 }
 
+static const DWORD lcmap_invalid_flags[] = {
+    0,
+    LCMAP_HIRAGANA | LCMAP_KATAKANA,
+    LCMAP_HALFWIDTH | LCMAP_FULLWIDTH,
+    LCMAP_TRADITIONAL_CHINESE | LCMAP_SIMPLIFIED_CHINESE,
+    LCMAP_LOWERCASE | SORT_STRINGSORT,
+    LCMAP_UPPERCASE | NORM_IGNORESYMBOLS,
+    LCMAP_LOWERCASE | NORM_IGNORESYMBOLS,
+    LCMAP_UPPERCASE | NORM_IGNORENONSPACE,
+    LCMAP_LOWERCASE | NORM_IGNORENONSPACE,
+    LCMAP_HIRAGANA | NORM_IGNORENONSPACE,
+    LCMAP_HIRAGANA | NORM_IGNORESYMBOLS,
+    LCMAP_HIRAGANA | LCMAP_SIMPLIFIED_CHINESE,
+    LCMAP_HIRAGANA | LCMAP_TRADITIONAL_CHINESE,
+    LCMAP_KATAKANA | NORM_IGNORENONSPACE,
+    LCMAP_KATAKANA | NORM_IGNORESYMBOLS,
+    LCMAP_KATAKANA | LCMAP_SIMPLIFIED_CHINESE,
+    LCMAP_KATAKANA | LCMAP_TRADITIONAL_CHINESE,
+    LCMAP_FULLWIDTH | NORM_IGNORENONSPACE,
+    LCMAP_FULLWIDTH | NORM_IGNORESYMBOLS,
+    LCMAP_FULLWIDTH | LCMAP_SIMPLIFIED_CHINESE,
+    LCMAP_FULLWIDTH | LCMAP_TRADITIONAL_CHINESE,
+    LCMAP_HALFWIDTH | NORM_IGNORENONSPACE,
+    LCMAP_HALFWIDTH | NORM_IGNORESYMBOLS,
+    LCMAP_HALFWIDTH | LCMAP_SIMPLIFIED_CHINESE,
+    LCMAP_HALFWIDTH | LCMAP_TRADITIONAL_CHINESE,
+};
+
 static void test_LCMapStringA(void)
 {
-    int ret, ret2;
+    int ret, ret2, i;
     char buf[256], buf2[256];
     static const char upper_case[] = "\tJUST! A, TEST; STRING 1/*+-.\r\n";
     static const char lower_case[] = "\tjust! a, test; string 1/*+-.\r\n";
@@ -2217,30 +2246,18 @@ static void test_LCMapStringA(void)
     ok(GetLastError() == ERROR_INVALID_FLAGS,
        "unexpected error code %d\n", GetLastError());
 
-    ret = LCMapStringA(LOCALE_USER_DEFAULT, LCMAP_HIRAGANA | LCMAP_KATAKANA,
-                       upper_case, -1, buf, sizeof(buf));
-    ok(!ret, "LCMAP_HIRAGANA and LCMAP_KATAKANA are mutually exclusive\n");
-    ok(GetLastError() == ERROR_INVALID_FLAGS,
-       "unexpected error code %d\n", GetLastError());
-
-    ret = LCMapStringA(LOCALE_USER_DEFAULT, LCMAP_HALFWIDTH | LCMAP_FULLWIDTH,
-                       upper_case, -1, buf, sizeof(buf));
-    ok(!ret, "LCMAP_HALFWIDTH | LCMAP_FULLWIDTH are mutually exclusive\n");
-    ok(GetLastError() == ERROR_INVALID_FLAGS,
-       "unexpected error code %d\n", GetLastError());
-
-    ret = LCMapStringA(LOCALE_USER_DEFAULT, LCMAP_TRADITIONAL_CHINESE | LCMAP_SIMPLIFIED_CHINESE,
-                       upper_case, -1, buf, sizeof(buf));
-    ok(!ret, "LCMAP_TRADITIONAL_CHINESE and LCMAP_SIMPLIFIED_CHINESE are mutually exclusive\n");
-    ok(GetLastError() == ERROR_INVALID_FLAGS,
-       "unexpected error code %d\n", GetLastError());
-
-    /* SORT_STRINGSORT must be used exclusively with LCMAP_SORTKEY */
-    SetLastError(0xdeadbeef);
-    ret = LCMapStringA(LOCALE_USER_DEFAULT, LCMAP_LOWERCASE | SORT_STRINGSORT,
-                       upper_case, -1, buf, sizeof(buf));
-    ok(GetLastError() == ERROR_INVALID_FLAGS, "expected ERROR_INVALID_FLAGS, got %d\n", GetLastError());
-    ok(!ret, "SORT_STRINGSORT without LCMAP_SORTKEY must fail\n");
+    /* test invalid flag combinations */
+    for (i = 0; i < sizeof(lcmap_invalid_flags)/sizeof(lcmap_invalid_flags[0]); i++) {
+        lstrcpyA(buf, "foo");
+        SetLastError(0xdeadbeef);
+        ret = LCMapStringA(LOCALE_USER_DEFAULT, lcmap_invalid_flags[i],
+                           lower_case, -1, buf, sizeof(buf));
+        ok(GetLastError() == ERROR_INVALID_FLAGS,
+           "LCMapStringA (flag %08x) unexpected error code %d\n",
+           lcmap_invalid_flags[i], GetLastError());
+        ok(!ret, "LCMapStringA (flag %08x) should return 0, got %d\n",
+           lcmap_invalid_flags[i], ret);
+    }
 
     /* test LCMAP_LOWERCASE */
     ret = LCMapStringA(LOCALE_USER_DEFAULT, LCMAP_LOWERCASE,
@@ -2351,6 +2368,14 @@ static void test_LCMapStringA(void)
 	lstrlenA(symbols_stripped) + 1, ret);
     ok(!lstrcmpA(buf, symbols_stripped), "LCMapStringA should return %s, but not %s\n", lower_case, buf);
 
+    /* test NORM_IGNORESYMBOLS | NORM_IGNORENONSPACE */
+    lstrcpyA(buf, "foo");
+    ret = LCMapStringA(LOCALE_USER_DEFAULT, NORM_IGNORESYMBOLS | NORM_IGNORENONSPACE,
+                       lower_case, -1, buf, sizeof(buf));
+    ok(ret == lstrlenA(symbols_stripped) + 1, "LCMapStringA should return %d, ret = %d\n",
+	lstrlenA(symbols_stripped) + 1, ret);
+    ok(!lstrcmpA(buf, symbols_stripped), "LCMapStringA should return %s, but not %s\n", lower_case, buf);
+
     /* test srclen = 0 */
     SetLastError(0xdeadbeef);
     ret = LCMapStringA(LOCALE_USER_DEFAULT, 0, upper_case, 0, buf, sizeof(buf));
@@ -2363,47 +2388,47 @@ typedef INT (*lcmapstring_wrapper)(DWORD, LPCWSTR, INT, LPWSTR, INT);
 
 static void test_lcmapstring_unicode(lcmapstring_wrapper func_ptr, const char *func_name)
 {
-    int ret, ret2;
+    const static WCHAR japanese_text[] = {
+        0x3044, 0x309d, 0x3084, 0x3001, 0x30a4, 0x30fc, 0x30cf,
+        0x30c8, 0x30fc, 0x30f4, 0x30a9, 0x306e, 0x2026, 0
+    };
+    const static WCHAR hiragana_text[] = {
+        0x3044, 0x309d, 0x3084, 0x3001, 0x3044, 0x30fc, 0x306f,
+        0x3068, 0x30fc, 0x3094, 0x3049, 0x306e, 0x2026, 0
+    };
+    const static WCHAR katakana_text[] = {
+        0x30a4, 0x30fd, 0x30e4, 0x3001, 0x30a4, 0x30fc, 0x30cf,
+        0x30c8, 0x30fc, 0x30f4, 0x30a9, 0x30ce, 0x2026, 0
+    };
+    const static WCHAR halfwidth_text[] = {
+        0x3044, 0x309d, 0x3084, 0xff64, 0xff72, 0xff70, 0xff8a,
+        0xff84, 0xff70, 0xff73, 0xff9e, 0xff6b, 0x306e, 0x2026, 0
+    };
+    int ret, ret2, i;
     WCHAR buf[256], buf2[256];
     char *p_buf = (char *)buf, *p_buf2 = (char *)buf2;
 
+    /* LCMAP_LOWERCASE | LCMAP_UPPERCASE makes LCMAP_TITLECASE, so it's valid now. */
     ret = func_ptr(LCMAP_LOWERCASE | LCMAP_UPPERCASE,
-                       upper_case, -1, buf, sizeof(buf)/sizeof(WCHAR));
-    if (broken(ret))
-        ok(lstrcmpW(buf, upper_case) == 0, "Expected upper case string\n");
-    else
-    {
-        ok(!ret, "%s LCMAP_LOWERCASE and LCMAP_UPPERCASE are mutually exclusive\n", func_name);
-        ok(GetLastError() == ERROR_INVALID_FLAGS, "%s unexpected error code %d\n",
-           func_name, GetLastError());
+                       lower_case, -1, buf, sizeof(buf)/sizeof(WCHAR));
+    todo_wine ok(ret == lstrlenW(title_case) + 1 || broken(!ret),
+       "%s ret %d, error %d, expected value %d\n", func_name,
+       ret, GetLastError(), lstrlenW(title_case) + 1);
+    todo_wine ok(lstrcmpW(buf, title_case) == 0 || broken(!ret),
+       "Expected title case string\n");
+
+    /* test invalid flag combinations */
+    for (i = 0; i < sizeof(lcmap_invalid_flags)/sizeof(lcmap_invalid_flags[0]); i++) {
+        lstrcpyW(buf, fooW);
+        SetLastError(0xdeadbeef);
+        ret = func_ptr(lcmap_invalid_flags[i],
+                           lower_case, -1, buf, sizeof(buf));
+        ok(GetLastError() == ERROR_INVALID_FLAGS,
+           "%s (flag %08x) unexpected error code %d\n",
+           func_name, lcmap_invalid_flags[i], GetLastError());
+        ok(!ret, "%s (flag %08x) should return 0, got %d\n",
+           func_name, lcmap_invalid_flags[i], ret);
     }
-
-    ret = func_ptr(LCMAP_HIRAGANA | LCMAP_KATAKANA,
-                       upper_case, -1, buf, sizeof(buf)/sizeof(WCHAR));
-    ok(!ret, "%s LCMAP_HIRAGANA and LCMAP_KATAKANA are mutually exclusive\n", func_name);
-    ok(GetLastError() == ERROR_INVALID_FLAGS, "%s unexpected error code %d\n",
-       func_name, GetLastError());
-
-    ret = func_ptr(LCMAP_HALFWIDTH | LCMAP_FULLWIDTH,
-                       upper_case, -1, buf, sizeof(buf)/sizeof(WCHAR));
-    ok(!ret, "%s LCMAP_HALFWIDTH | LCMAP_FULLWIDTH are mutually exclusive\n", func_name);
-    ok(GetLastError() == ERROR_INVALID_FLAGS, "%s unexpected error code %d\n",
-       func_name, GetLastError());
-
-    ret = func_ptr(LCMAP_TRADITIONAL_CHINESE | LCMAP_SIMPLIFIED_CHINESE,
-                       upper_case, -1, buf, sizeof(buf)/sizeof(WCHAR));
-    ok(!ret, "%s LCMAP_TRADITIONAL_CHINESE and LCMAP_SIMPLIFIED_CHINESE are mutually exclusive\n",
-       func_name);
-    ok(GetLastError() == ERROR_INVALID_FLAGS, "%s unexpected error code %d\n",
-       func_name, GetLastError());
-
-    /* SORT_STRINGSORT must be used exclusively with LCMAP_SORTKEY */
-    SetLastError(0xdeadbeef);
-    ret = func_ptr(LCMAP_LOWERCASE | SORT_STRINGSORT,
-                       upper_case, -1, buf, sizeof(buf)/sizeof(WCHAR));
-    ok(GetLastError() == ERROR_INVALID_FLAGS, "%s expected ERROR_INVALID_FLAGS, got %d\n",
-       func_name, GetLastError());
-    ok(!ret, "%s SORT_STRINGSORT without LCMAP_SORTKEY must fail\n", func_name);
 
     /* test LCMAP_LOWERCASE */
     ret = func_ptr(LCMAP_LOWERCASE,
@@ -2419,10 +2444,71 @@ static void test_lcmapstring_unicode(lcmapstring_wrapper func_ptr, const char *f
        ret, GetLastError(), lstrlenW(lower_case) + 1);
     ok(!lstrcmpW(buf, upper_case), "%s string compare mismatch\n", func_name);
 
+    /* test LCMAP_HIRAGANA */
+    ret = func_ptr(LCMAP_HIRAGANA,
+                   japanese_text, -1, buf, sizeof(buf)/sizeof(WCHAR));
+    ok(ret == lstrlenW(hiragana_text) + 1, "%s ret %d, error %d, expected value %d\n", func_name,
+       ret, GetLastError(), lstrlenW(hiragana_text) + 1);
+    ok(!lstrcmpW(buf, hiragana_text), "%s string compare mismatch\n", func_name);
+
+    buf[0] = 0x30f5; /* KATAKANA LETTER SMALL KA */
+    ret = func_ptr(LCMAP_HIRAGANA, buf, 1, buf2, 1);
+    ok(ret == 1, "%s ret %d, error %d, expected value 1\n", func_name,
+       ret, GetLastError());
+    /* U+3095: HIRAGANA LETTER SMALL KA was added in Unicode 3.2 */
+    ok(buf2[0] == 0x3095 || broken(buf2[0] == 0x30f5 /* Vista and earlier versions */),
+       "%s expected %04x, got %04x\n", func_name, 0x3095, buf2[0]);
+
+    /* test LCMAP_KATAKANA | LCMAP_LOWERCASE */
+    ret = func_ptr(LCMAP_KATAKANA | LCMAP_LOWERCASE,
+                   japanese_text, -1, buf, sizeof(buf)/sizeof(WCHAR));
+    ok(ret == lstrlenW(katakana_text) + 1, "%s ret %d, error %d, expected value %d\n", func_name,
+       ret, GetLastError(), lstrlenW(katakana_text) + 1);
+    ok(!lstrcmpW(buf, katakana_text), "%s string compare mismatch\n", func_name);
+
+    /* test LCMAP_FULLWIDTH */
+    ret = func_ptr(LCMAP_FULLWIDTH,
+                   halfwidth_text, -1, buf, sizeof(buf)/sizeof(WCHAR));
+    ok(ret == lstrlenW(japanese_text) + 1, "%s ret %d, error %d, expected value %d\n", func_name,
+       ret, GetLastError(), lstrlenW(japanese_text) + 1);
+    ok(!lstrcmpW(buf, japanese_text), "%s string compare mismatch\n", func_name);
+
+    ret2 = func_ptr(LCMAP_FULLWIDTH, halfwidth_text, -1, NULL, 0);
+    ok(ret == ret2, "%s ret %d, expected value %d\n", func_name, ret2, ret);
+
+    /* test LCMAP_FULLWIDTH | LCMAP_HIRAGANA
+       (half-width katakana is converted into full-wdith hiragana) */
+    ret = func_ptr(LCMAP_FULLWIDTH | LCMAP_HIRAGANA,
+                   halfwidth_text, -1, buf, sizeof(buf)/sizeof(WCHAR));
+    ok(ret == lstrlenW(hiragana_text) + 1, "%s ret %d, error %d, expected value %d\n", func_name,
+       ret, GetLastError(), lstrlenW(hiragana_text) + 1);
+    ok(!lstrcmpW(buf, hiragana_text), "%s string compare mismatch\n", func_name);
+
+    ret2 = func_ptr(LCMAP_FULLWIDTH | LCMAP_HIRAGANA, halfwidth_text, -1, NULL, 0);
+    ok(ret == ret2, "%s ret %d, expected value %d\n", func_name, ret, ret2);
+
+    /* test LCMAP_HALFWIDTH */
+    ret = func_ptr(LCMAP_HALFWIDTH,
+                   japanese_text, -1, buf, sizeof(buf)/sizeof(WCHAR));
+    ok(ret == lstrlenW(halfwidth_text) + 1, "%s ret %d, error %d, expected value %d\n", func_name,
+       ret, GetLastError(), lstrlenW(halfwidth_text) + 1);
+    ok(!lstrcmpW(buf, halfwidth_text), "%s string compare mismatch\n", func_name);
+
+    ret2 = func_ptr(LCMAP_HALFWIDTH, japanese_text, -1, NULL, 0);
+    ok(ret == ret2, "%s ret %d, expected value %d\n", func_name, ret, ret2);
+
     /* test buffer overflow */
     SetLastError(0xdeadbeef);
     ret = func_ptr(LCMAP_UPPERCASE,
                        lower_case, -1, buf, 4);
+    ok(!ret && GetLastError() == ERROR_INSUFFICIENT_BUFFER,
+       "%s should return 0 and ERROR_INSUFFICIENT_BUFFER, got %d\n", func_name, ret);
+
+    /* KATAKANA LETTER GA (U+30AC) is converted into two half-width characters.
+       Thus, it requires two WCHARs. */
+    buf[0] = 0x30ac;
+    SetLastError(0xdeadbeef);
+    ret = func_ptr(LCMAP_HALFWIDTH, buf, 1, buf2, 1);
     ok(!ret && GetLastError() == ERROR_INSUFFICIENT_BUFFER,
        "%s should return 0 and ERROR_INSUFFICIENT_BUFFER, got %d\n", func_name, ret);
 
@@ -2494,6 +2580,14 @@ static void test_lcmapstring_unicode(lcmapstring_wrapper func_ptr, const char *f
     /* test NORM_IGNORESYMBOLS */
     lstrcpyW(buf, fooW);
     ret = func_ptr(NORM_IGNORESYMBOLS,
+                       lower_case, -1, buf, sizeof(buf)/sizeof(WCHAR));
+    ok(ret == lstrlenW(symbols_stripped) + 1, "%s func_ptr should return %d, ret = %d\n", func_name,
+    lstrlenW(symbols_stripped) + 1, ret);
+    ok(!lstrcmpW(buf, symbols_stripped), "%s string comparison mismatch\n", func_name);
+
+    /* test NORM_IGNORESYMBOLS | NORM_IGNORENONSPACE */
+    lstrcpyW(buf, fooW);
+    ret = func_ptr(NORM_IGNORESYMBOLS | NORM_IGNORENONSPACE,
                        lower_case, -1, buf, sizeof(buf)/sizeof(WCHAR));
     ok(ret == lstrlenW(symbols_stripped) + 1, "%s func_ptr should return %d, ret = %d\n", func_name,
     lstrlenW(symbols_stripped) + 1, ret);

@@ -1,7 +1,8 @@
 /*
  * Server-side clipboard management
  *
- * Copyright (C) 2002 Ulrich Czekalla
+ * Copyright 2002 Ulrich Czekalla
+ * Copyright 2016 Alexandre Julliard
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -36,6 +37,16 @@
 #include "winuser.h"
 #include "winternl.h"
 
+struct clip_format
+{
+    struct list    entry;            /* entry in format list */
+    unsigned int   id;               /* format id */
+    unsigned int   from;             /* for synthesized data, format to generate it from */
+    unsigned int   seqno;            /* sequence number when the data was set */
+    data_size_t    size;             /* size of the data block */
+    void          *data;             /* data contents, or NULL for delay-rendered */
+};
+
 struct clipboard
 {
     struct object  obj;              /* object header */
@@ -44,9 +55,12 @@ struct clipboard
     struct thread *owner_thread;     /* thread id that owns the clipboard */
     user_handle_t  owner_win;        /* window that owns the clipboard data */
     user_handle_t  viewer;           /* first window in clipboard viewer list */
+    unsigned int   lcid;             /* locale id to use for synthesizing text formats */
     unsigned int   seqno;            /* clipboard change sequence number */
     unsigned int   open_seqno;       /* sequence number at open time */
-    timeout_t      seqno_timestamp;  /* time stamp of last seqno increment */
+    struct list    formats;          /* list of data formats */
+    unsigned int   format_count;     /* count of data formats */
+    unsigned int   format_map;       /* existence bitmap for formats < CF_MAX */
     unsigned int   listen_size;      /* size of listeners array */
     unsigned int   listen_count;     /* count of listeners */
     user_handle_t *listeners;        /* array of listener windows */
@@ -78,7 +92,49 @@ static const struct object_ops clipboard_ops =
 };
 
 
-#define MINUPDATELAPSE (2 * TICKS_PER_SEC)
+#define HAS_FORMAT(map,id) ((map) & (1 << (id)))  /* only for formats < CF_MAX */
+
+/* find a data format in the clipboard */
+static struct clip_format *get_format( struct clipboard *clipboard, unsigned int id )
+{
+    struct clip_format *format;
+
+    LIST_FOR_EACH_ENTRY( format, &clipboard->formats, struct clip_format, entry )
+        if (format->id == id) return format;
+
+    return NULL;
+}
+
+/* add a data format to the clipboard */
+static struct clip_format *add_format( struct clipboard *clipboard, unsigned int id )
+{
+    struct clip_format *format;
+
+    if (!(format = mem_alloc( sizeof(*format )))) return NULL;
+    format->id   = id;
+    format->from = 0;
+    format->size = 0;
+    format->data = NULL;
+    list_add_tail( &clipboard->formats, &format->entry );
+    clipboard->format_count++;
+    if (id < CF_MAX) clipboard->format_map |= 1 << id;
+    return format;
+}
+
+/* free all clipboard formats */
+static void free_clipboard_formats( struct clipboard *clipboard )
+{
+    struct clip_format *format, *next;
+
+    LIST_FOR_EACH_ENTRY_SAFE( format, next, &clipboard->formats, struct clip_format, entry )
+    {
+        list_remove( &format->entry );
+        free( format->data );
+        free( format );
+    }
+    clipboard->format_count = 0;
+    clipboard->format_map = 0;
+}
 
 /* dump a clipboard object */
 static void clipboard_dump( struct object *obj, int verbose )
@@ -95,6 +151,7 @@ static void clipboard_destroy( struct object *obj )
     struct clipboard *clipboard = (struct clipboard *)obj;
 
     free( clipboard->listeners );
+    free_clipboard_formats( clipboard );
 }
 
 /* retrieve the clipboard info for the current process, allocating it if needed */
@@ -115,15 +172,61 @@ static struct clipboard *get_process_clipboard(void)
             clipboard->owner_win = 0;
             clipboard->viewer = 0;
             clipboard->seqno = 0;
-            clipboard->seqno_timestamp = 0;
+            clipboard->format_count = 0;
+            clipboard->format_map = 0;
             clipboard->listen_size = 0;
             clipboard->listen_count = 0;
             clipboard->listeners = NULL;
+            list_init( &clipboard->formats );
             winstation->clipboard = clipboard;
         }
     }
     release_object( winstation );
     return clipboard;
+}
+
+/* add synthesized formats upon clipboard close */
+static int synthesize_formats( struct clipboard *clipboard )
+{
+    static const unsigned int formats[][3] =
+    {
+        { CF_TEXT, CF_OEMTEXT, CF_UNICODETEXT },
+        { CF_OEMTEXT, CF_UNICODETEXT, CF_TEXT },
+        { CF_UNICODETEXT, CF_TEXT, CF_OEMTEXT },
+        { CF_METAFILEPICT, CF_ENHMETAFILE },
+        { CF_ENHMETAFILE, CF_METAFILEPICT },
+        { CF_BITMAP, CF_DIB, CF_DIBV5 },
+        { CF_DIB, CF_BITMAP, CF_DIBV5 },
+        { CF_DIBV5, CF_BITMAP, CF_DIB }
+    };
+    unsigned int i, from, total = 0, map = clipboard->format_map;
+    struct clip_format *format;
+
+    if (!HAS_FORMAT( map, CF_LOCALE ) &&
+        (HAS_FORMAT( map, CF_TEXT ) || HAS_FORMAT( map, CF_OEMTEXT ) || HAS_FORMAT( map, CF_UNICODETEXT )))
+    {
+        void *data = memdup( &clipboard->lcid, sizeof(clipboard->lcid) );
+        if (data && (format = add_format( clipboard, CF_LOCALE )))
+        {
+            format->seqno = clipboard->seqno++;
+            format->data  = data;
+            format->size  = sizeof(clipboard->lcid);
+        }
+        else free( data );
+    }
+
+    for (i = 0; i < sizeof(formats) / sizeof(formats[0]); i++)
+    {
+        if (HAS_FORMAT( map, formats[i][0] )) continue;
+        if (HAS_FORMAT( map, formats[i][1] )) from = formats[i][1];
+        else if (HAS_FORMAT( map, formats[i][2] )) from = formats[i][2];
+        else continue;
+        if (!(format = add_format( clipboard, formats[i][0] ))) continue;
+        format->from = from;
+        format->seqno = clipboard->seqno;
+        total++;
+    }
+    return total;
 }
 
 /* add a clipboard listener */
@@ -168,28 +271,49 @@ static int remove_listener( struct clipboard *clipboard, user_handle_t window )
     return 0;
 }
 
-/* close the clipboard, and return the viewer window that should be notified if any */
-static user_handle_t close_clipboard( struct clipboard *clipboard )
+/* notify all listeners, and return the viewer window that should be notified if any */
+static user_handle_t notify_listeners( struct clipboard *clipboard )
 {
     unsigned int i;
-
-    clipboard->open_win = 0;
-    clipboard->open_thread = NULL;
-
-    if (clipboard->seqno == clipboard->open_seqno) return 0;  /* unchanged */
 
     for (i = 0; i < clipboard->listen_count; i++)
         post_message( clipboard->listeners[i], WM_CLIPBOARDUPDATE, 0, 0 );
     return clipboard->viewer;
 }
 
+/* close the clipboard, and return the viewer window that should be notified if any */
+static user_handle_t close_clipboard( struct clipboard *clipboard )
+{
+    clipboard->open_win = 0;
+    clipboard->open_thread = NULL;
+    if (clipboard->seqno == clipboard->open_seqno) return 0;  /* unchanged */
+    if (synthesize_formats( clipboard )) clipboard->seqno++;
+    return notify_listeners( clipboard );
+}
+
 /* release the clipboard owner, and return the viewer window that should be notified if any */
 static user_handle_t release_clipboard( struct clipboard *clipboard )
 {
+    struct clip_format *format, *next;
+    int changed = 0;
+
     clipboard->owner_win = 0;
     clipboard->owner_thread = NULL;
-    /* FIXME: free delay-rendered formats if any and notify listeners */
-    return 0;
+
+    /* free the delayed-rendered formats, since we no longer have an owner to render them */
+    LIST_FOR_EACH_ENTRY_SAFE( format, next, &clipboard->formats, struct clip_format, entry )
+    {
+        if (format->data || format->from) continue;
+        list_remove( &format->entry );
+        if (format->id < CF_MAX) clipboard->format_map &= ~(1 << format->id);
+        clipboard->format_count--;
+        free( format );
+        changed = 1;
+    }
+
+    if (!changed) return 0;
+    clipboard->seqno++;
+    return notify_listeners( clipboard );
 }
 
 /* cleanup clipboard information upon window destruction */
@@ -244,17 +368,6 @@ static int release_clipboard_owner( struct clipboard *clipboard, user_handle_t w
 }
 
 
-static int get_seqno( struct clipboard *clipboard )
-{
-    if (!clipboard->owner_thread && (current_time - clipboard->seqno_timestamp > MINUPDATELAPSE))
-    {
-        clipboard->seqno_timestamp = current_time;
-        clipboard->seqno++;
-    }
-    return clipboard->seqno;
-}
-
-
 /* open the clipboard */
 DECL_HANDLER(open_clipboard)
 {
@@ -274,7 +387,7 @@ DECL_HANDLER(open_clipboard)
     clipboard->open_win = win;
     clipboard->open_thread = current;
 
-    reply->owner = (clipboard->owner_thread && clipboard->owner_thread->process == current->process);
+    reply->owner = clipboard->owner_win;
 }
 
 
@@ -290,10 +403,8 @@ DECL_HANDLER(close_clipboard)
         set_win32_error( ERROR_CLIPBOARD_NOT_OPEN );
         return;
     }
-    if (req->changed) clipboard->seqno++;
-
     reply->viewer = close_clipboard( clipboard );
-    reply->owner  = (clipboard->owner_thread && clipboard->owner_thread->process == current->process);
+    reply->owner  = clipboard->owner_win;
 }
 
 
@@ -314,13 +425,135 @@ DECL_HANDLER(set_clipboard_info)
 
     if (req->flags & SET_CB_SEQNO) clipboard->seqno++;
 
-    reply->seqno = get_seqno( clipboard );
+    reply->seqno = clipboard->seqno;
 
     if (clipboard->open_thread) reply->flags |= CB_OPEN_ANY;
     if (clipboard->open_thread == current) reply->flags |= CB_OPEN;
     if (clipboard->owner_thread == current) reply->flags |= CB_OWNER;
     if (clipboard->owner_thread && clipboard->owner_thread->process == current->process)
         reply->flags |= CB_PROCESS;
+}
+
+
+/* add a data format to the clipboard */
+DECL_HANDLER(set_clipboard_data)
+{
+    struct clip_format *format;
+    struct clipboard *clipboard = get_process_clipboard();
+    void *data = NULL;
+
+    if (!clipboard) return;
+
+    if (!req->format || !clipboard->open_thread)
+    {
+        set_win32_error( ERROR_CLIPBOARD_NOT_OPEN );
+        return;
+    }
+
+    if (get_req_data_size() && !(data = memdup( get_req_data(), get_req_data_size() ))) return;
+
+    if (!(format = get_format( clipboard, req->format )))
+    {
+        if (!(format = add_format( clipboard, req->format )))
+        {
+            free( data );
+            return;
+        }
+    }
+
+    free( format->data );
+    format->from   = 0;
+    format->seqno  = clipboard->seqno++;
+    format->size   = get_req_data_size();
+    format->data   = data;
+
+    if (req->format == CF_TEXT || req->format == CF_OEMTEXT || req->format == CF_UNICODETEXT)
+        clipboard->lcid = req->lcid;
+
+    reply->seqno = format->seqno;
+}
+
+
+/* fetch a data format from the clipboard */
+DECL_HANDLER(get_clipboard_data)
+{
+    struct clip_format *format;
+    struct clipboard *clipboard = get_process_clipboard();
+
+    if (!clipboard) return;
+
+    if (clipboard->open_thread != current)
+    {
+        set_win32_error( ERROR_CLIPBOARD_NOT_OPEN );
+        return;
+    }
+    if (!(format = get_format( clipboard, req->format )))
+    {
+        set_error( STATUS_OBJECT_NAME_NOT_FOUND );
+        return;
+    }
+    reply->from   = format->from;
+    reply->total  = format->size;
+    reply->seqno  = format->seqno;
+    if (!format->data && !format->from) reply->owner = clipboard->owner_win;
+    if (req->cached && req->seqno == format->seqno) return;  /* client-side cache still valid */
+    if (format->size <= get_reply_max_size()) set_reply_data( format->data, format->size );
+    else set_error( STATUS_BUFFER_OVERFLOW );
+}
+
+
+/* retrieve a list of available formats */
+DECL_HANDLER(get_clipboard_formats)
+{
+    struct clipboard *clipboard = get_process_clipboard();
+
+    if (!clipboard) return;
+
+    if (!req->format)
+    {
+        struct clip_format *format;
+        unsigned int i = 0, *ptr;
+        data_size_t size = clipboard->format_count * sizeof(unsigned int);
+
+        reply->count = clipboard->format_count;
+        if (size <= get_reply_max_size())
+        {
+            if ((ptr = mem_alloc( size )))
+            {
+                LIST_FOR_EACH_ENTRY( format, &clipboard->formats, struct clip_format, entry )
+                    ptr[i++] = format->id;
+                assert( i == clipboard->format_count );
+                set_reply_data_ptr( ptr, size );
+            }
+        }
+        else set_error( STATUS_BUFFER_TOO_SMALL );
+    }
+    else reply->count = (get_format( clipboard, req->format ) != NULL);  /* query a single format */
+}
+
+
+/* retrieve the next available format */
+DECL_HANDLER(enum_clipboard_formats)
+{
+    struct list *ptr;
+    struct clipboard *clipboard = get_process_clipboard();
+
+    if (!clipboard) return;
+
+    if (clipboard->open_thread != current)
+    {
+        set_win32_error( ERROR_CLIPBOARD_NOT_OPEN );
+        return;
+    }
+
+    ptr = list_head( &clipboard->formats );
+    if (req->previous)
+    {
+        while (ptr && LIST_ENTRY( ptr, struct clip_format, entry )->id != req->previous)
+            ptr = list_next( &clipboard->formats, ptr );
+        if (ptr) ptr = list_next( &clipboard->formats, ptr );
+    }
+    if (ptr) reply->format = LIST_ENTRY( ptr, struct clip_format, entry )->id;
 }
 
 
@@ -336,6 +569,8 @@ DECL_HANDLER(empty_clipboard)
         set_win32_error( ERROR_CLIPBOARD_NOT_OPEN );
         return;
     }
+
+    free_clipboard_formats( clipboard );
     clipboard->owner_win = clipboard->open_win;
     clipboard->owner_thread = clipboard->open_thread;
     clipboard->seqno++;
@@ -353,9 +588,11 @@ DECL_HANDLER(release_clipboard)
     if (!(owner = get_valid_window_handle( req->owner ))) return;
 
     if (clipboard->owner_win == owner)
+    {
         reply->viewer = release_clipboard( clipboard );
-    else
-        set_error( STATUS_INVALID_OWNER );
+        reply->owner = clipboard->owner_win;
+    }
+    else set_error( STATUS_INVALID_OWNER );
 }
 
 
@@ -369,7 +606,7 @@ DECL_HANDLER(get_clipboard_info)
     reply->window = clipboard->open_win;
     reply->owner  = clipboard->owner_win;
     reply->viewer = clipboard->viewer;
-    reply->seqno  = get_seqno( clipboard );
+    reply->seqno  = clipboard->seqno;
 }
 
 

@@ -1882,8 +1882,7 @@ static void create_and_bind_fbo_attachment(const struct wined3d_gl_info *gl_info
         case WINED3D_GL_RES_TYPE_TEX_3D:
             gl_info->gl_ops.gl.p_glGenTextures(1, object);
             gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_3D, *object);
-            GL_EXTCALL(glTexImage3D)(GL_TEXTURE_3D, 0, internal, 16, 16, 16, 0,
-                    format, type, NULL);
+            GL_EXTCALL(glTexImage3D(GL_TEXTURE_3D, 0, internal, 16, 16, 16, 0, format, type, NULL));
             gl_info->gl_ops.gl.p_glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
             gl_info->gl_ops.gl.p_glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
@@ -2321,7 +2320,7 @@ static void check_fbo_compat(struct wined3d_caps_gl_ctx *ctx, struct wined3d_for
         }
 
         delete_fbo_attachment(gl_info, type, object);
-        checkGLcall("Framebuffer format check cleaup");
+        checkGLcall("Framebuffer format check cleanup");
     }
 
     if (fallback_fmt_used && regular_fmt_used)
@@ -3246,7 +3245,7 @@ static void apply_format_fixups(struct wined3d_adapter *adapter, struct wined3d_
 
         if (!adapter->shader_backend->shader_color_fixup_supported(format->color_fixup)
                 || !adapter->fragment_pipe->color_fixup_supported(format->color_fixup))
-            format_clear_flag(&gl_info->formats[idx], WINED3DFMT_FLAG_TEXTURE);
+            format_clear_flag(format, WINED3DFMT_FLAG_TEXTURE);
     }
 
     /* GL_EXT_texture_compression_s3tc does not support 3D textures. Some Windows drivers
@@ -4495,14 +4494,16 @@ void get_modelview_matrix(const struct wined3d_context *context, const struct wi
 void get_projection_matrix(const struct wined3d_context *context, const struct wined3d_state *state,
         struct wined3d_matrix *mat)
 {
+    BOOL clip_control = context->gl_info->supported[ARB_CLIP_CONTROL];
+    BOOL flip = !clip_control && context->render_offscreen;
     float center_offset;
 
     /* There are a couple of additional things we have to take into account
      * here besides the projection transformation itself:
      *   - We need to flip along the y-axis in case of offscreen rendering.
      *   - OpenGL Z range is {-Wc,...,Wc} while D3D Z range is {0,...,Wc}.
-     *   - D3D coordinates refer to pixel centers while GL coordinates refer
-     *     to pixel corners.
+     *   - <= D3D9 coordinates refer to pixel centers while GL coordinates
+     *     refer to pixel corners.
      *   - D3D has a top-left filling convention. We need to maintain this
      *     even after the y-flip mentioned above.
      * In order to handle the last two points, we translate by
@@ -4512,7 +4513,7 @@ void get_projection_matrix(const struct wined3d_context *context, const struct w
      * driver, but small enough to prevent it from interfering with any
      * anti-aliasing. */
 
-    if (context->swapchain->device->wined3d->flags & WINED3D_PIXEL_CENTER_INTEGER)
+    if (!clip_control && context->d3d_info->wined3d_creation_flags & WINED3D_PIXEL_CENTER_INTEGER)
         center_offset = 63.0f / 64.0f;
     else
         center_offset = -1.0f / 64.0f;
@@ -4526,14 +4527,14 @@ void get_projection_matrix(const struct wined3d_context *context, const struct w
         float h = state->viewport.height;
         float x_scale = 2.0f / w;
         float x_offset = (center_offset - (2.0f * x) - w) / w;
-        float y_scale = context->render_offscreen ? 2.0f / h : 2.0f / -h;
-        float y_offset = context->render_offscreen
+        float y_scale = flip ? 2.0f / h : 2.0f / -h;
+        float y_offset = flip
                 ? (center_offset - (2.0f * y) - h) / h
                 : (center_offset - (2.0f * y) - h) / -h;
         enum wined3d_depth_buffer_type zenable = state->fb->depth_stencil ?
                 state->render_states[WINED3D_RS_ZENABLE] : WINED3D_ZB_FALSE;
-        float z_scale = zenable ? 2.0f : 0.0f;
-        float z_offset = zenable ? -1.0f : 0.0f;
+        float z_scale = zenable ? clip_control ? 1.0f : 2.0f : 0.0f;
+        float z_offset = zenable ? clip_control ? 0.0f : -1.0f : 0.0f;
         const struct wined3d_matrix projection =
         {
              x_scale,     0.0f,      0.0f, 0.0f,
@@ -4546,17 +4547,19 @@ void get_projection_matrix(const struct wined3d_context *context, const struct w
     }
     else
     {
-        float y_scale = context->render_offscreen ? -1.0f : 1.0f;
+        float y_scale = flip ? -1.0f : 1.0f;
         float x_offset = center_offset / state->viewport.width;
-        float y_offset = context->render_offscreen
+        float y_offset = flip
                 ? center_offset / state->viewport.height
                 : -center_offset / state->viewport.height;
+        float z_scale = clip_control ? 1.0f : 2.0f;
+        float z_offset = clip_control ? 0.0f : -1.0f;
         const struct wined3d_matrix projection =
         {
-                1.0f,     0.0f,  0.0f, 0.0f,
-                0.0f,  y_scale,  0.0f, 0.0f,
-                0.0f,     0.0f,  2.0f, 0.0f,
-            x_offset, y_offset, -1.0f, 1.0f,
+                1.0f,     0.0f,     0.0f, 0.0f,
+                0.0f,  y_scale,     0.0f, 0.0f,
+                0.0f,     0.0f,  z_scale, 0.0f,
+            x_offset, y_offset, z_offset, 1.0f,
         };
 
         multiply_matrix(mat, &projection, &state->transforms[WINED3D_TS_PROJECTION]);
@@ -4679,7 +4682,7 @@ static void compute_texture_matrix(const struct wined3d_gl_info *gl_info, const 
 void get_texture_matrix(const struct wined3d_context *context, const struct wined3d_state *state,
         unsigned int tex, struct wined3d_matrix *mat)
 {
-    const struct wined3d_device *device = context->swapchain->device;
+    const struct wined3d_device *device = context->device;
     const struct wined3d_gl_info *gl_info = context->gl_info;
     BOOL generated = (state->texture_states[tex][WINED3D_TSS_TEXCOORD_INDEX] & 0xffff0000)
             != WINED3DTSS_TCI_PASSTHRU;
@@ -4954,10 +4957,10 @@ void wined3d_format_get_float_color_key(const struct wined3d_format *format,
         case WINED3DFMT_R8G8B8X8_UNORM:
         case WINED3DFMT_R16G16_UNORM:
         case WINED3DFMT_B10G10R10A2_UNORM:
-            slop.r = 0.5f / ((1 << format->red_size) - 1);
-            slop.g = 0.5f / ((1 << format->green_size) - 1);
-            slop.b = 0.5f / ((1 << format->blue_size) - 1);
-            slop.a = 0.5f / ((1 << format->alpha_size) - 1);
+            slop.r = 0.5f / ((1u << format->red_size) - 1);
+            slop.g = 0.5f / ((1u << format->green_size) - 1);
+            slop.b = 0.5f / ((1u << format->blue_size) - 1);
+            slop.a = 0.5f / ((1u << format->alpha_size) - 1);
 
             float_colors[0].r = color_to_float(key->color_space_low_value, format->red_size, format->red_offset)
                     - slop.r;

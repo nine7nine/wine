@@ -49,10 +49,6 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(xdnd);
 
-/* Maximum wait time for selection notify */
-#define SELECTION_RETRIES 500  /* wait for .1 seconds */
-#define SELECTION_WAIT    1000 /* us */
-
 typedef struct tagXDNDDATA
 {
     int cf_win;
@@ -71,7 +67,7 @@ static HWND XDNDLastTargetWnd;
 /* might be an ancestor of XDNDLastTargetWnd */
 static HWND XDNDLastDropTargetWnd;
 
-static void X11DRV_XDND_InsertXDNDData(int property, int format, HANDLE contents);
+static void X11DRV_XDND_InsertXDNDData( Atom property, UINT format, HANDLE contents );
 static void X11DRV_XDND_ResolveProperty(Display *display, Window xwin, Time tm,
     Atom *types, unsigned long count);
 static BOOL X11DRV_XDND_HasHDROP(void);
@@ -496,9 +492,6 @@ void X11DRV_XDND_LeaveEvent( HWND hWnd, XClientMessageEvent *event )
 static void X11DRV_XDND_ResolveProperty(Display *display, Window xwin, Time tm,
                                         Atom *types, unsigned long count)
 {
-    unsigned int i, j;
-    BOOL res;
-    XEvent xe;
     XDNDDATA *current, *next;
     BOOL haveHDROP = FALSE;
 
@@ -506,37 +499,8 @@ static void X11DRV_XDND_ResolveProperty(Display *display, Window xwin, Time tm,
 
     X11DRV_XDND_FreeDragDropOp(); /* Clear previously cached data */
 
-    for (i = 0; i < count; i++)
-    {
-        HANDLE contents;
-        UINT windowsFormat;
-
-        TRACE("requesting atom %ld from xwin %ld\n", types[i], xwin);
-
-        if (types[i] == 0)
-            continue;
-
-        XConvertSelection(display, x11drv_atom(XdndSelection), types[i],
-                          x11drv_atom(XdndTarget), xwin, /*tm*/CurrentTime);
-
-        /*
-         * Wait for SelectionNotify
-         */
-        for (j = 0; j < SELECTION_RETRIES; j++)
-        {
-            res = XCheckTypedWindowEvent(display, xwin, SelectionNotify, &xe);
-            if (res && xe.xselection.selection == x11drv_atom(XdndSelection)) break;
-
-            usleep(SELECTION_WAIT);
-        }
-
-        if (xe.xselection.property == None)
-            continue;
-
-        contents = X11DRV_CLIPBOARD_ImportSelection(display, types[i], xwin, x11drv_atom(XdndTarget), &windowsFormat);
-        if (contents)
-            X11DRV_XDND_InsertXDNDData(types[i], windowsFormat, contents);
-    }
+    X11DRV_CLIPBOARD_ImportSelection( display, xwin, x11drv_atom(XdndSelection),
+                                      types, count, X11DRV_XDND_InsertXDNDData );
 
     /* On Windows when there is a CF_HDROP, there are no other CF_ formats.
      * foobar2000 relies on this (spaces -> %20's without it).
@@ -569,7 +533,7 @@ static void X11DRV_XDND_ResolveProperty(Display *display, Window xwin, Time tm,
  *
  * Cache available XDND property
  */
-static void X11DRV_XDND_InsertXDNDData(int property, int format, HANDLE contents)
+static void X11DRV_XDND_InsertXDNDData( Atom property, UINT format, HANDLE contents )
 {
     LPXDNDDATA current = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(XDNDDATA));
 

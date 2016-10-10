@@ -1588,4 +1588,34 @@ void CDECL MSVCRT_type_info_destroy_list(SLIST_HEADER *header)
         MSVCRT_free(cur);
     }
 }
+
+/******************************************************************
+ *              __std_type_info_hash (UCRTBASE.@)
+ */
+MSVCRT_size_t CDECL MSVCRT_type_info_hash(const type_info140 *ti)
+{
+    MSVCRT_size_t hash, fnv_prime;
+    const char *p;
+
+#ifdef _WIN64
+    hash = 0xcbf29ce484222325;
+    fnv_prime = 0x100000001b3;
+#else
+    hash = 0x811c9dc5;
+    fnv_prime = 0x1000193;
+#endif
+
+    TRACE("(%p)->%s\n", ti, ti->mangled);
+
+    for(p = ti->mangled+1; *p; p++) {
+        hash ^= *p;
+        hash *= fnv_prime;
+    }
+
+#ifdef _WIN64
+    hash ^= hash >> 32;
+#endif
+
+    return hash;
+}
 #endif

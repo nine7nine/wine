@@ -53,12 +53,13 @@ MSVCP_bool ios_base_Sync = FALSE;
 typedef struct {
     streamoff off;
     __int64 DECLSPEC_ALIGN(8) pos;
-    int state;
-} fpos_int;
+    _Mbstatet state;
+} fpos_mbstatet;
 
-static inline const char* debugstr_fpos_int(fpos_int *fpos)
+static inline const char* debugstr_fpos_mbstatet(fpos_mbstatet *fpos)
 {
-    return wine_dbg_sprintf("fpos(%s %s %d)", wine_dbgstr_longlong(fpos->off), wine_dbgstr_longlong(fpos->pos), fpos->state);
+    return wine_dbg_sprintf("fpos(%s %s %d)", wine_dbgstr_longlong(fpos->off),
+            wine_dbgstr_longlong(fpos->pos), MBSTATET_TO_INT(&fpos->state));
 }
 
 typedef struct {
@@ -88,7 +89,7 @@ typedef struct {
     char putback;
 #endif
     MSVCP_bool wrotesome;
-    int state;
+    _Mbstatet state;
     MSVCP_bool close;
 #if _MSVCP_VER == 70
     locale loc;
@@ -107,7 +108,7 @@ typedef struct {
     wchar_t putback;
 #endif
     MSVCP_bool wrotesome;
-    int state;
+    _Mbstatet state;
     MSVCP_bool close;
 #if _MSVCP_VER == 70
     locale loc;
@@ -758,21 +759,21 @@ void __asm_dummy_vtables(void) {
             VTABLE_ADD_FUNC(ios_base_vector_dtor));
     __ASM_VTABLE(basic_ios_char,
             VTABLE_ADD_FUNC(basic_ios_char_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
             );
     __ASM_VTABLE(basic_ios_wchar,
             VTABLE_ADD_FUNC(basic_ios_wchar_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
             );
     __ASM_VTABLE(basic_ios_short,
             VTABLE_ADD_FUNC(basic_ios_wchar_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
@@ -956,189 +957,189 @@ void __asm_dummy_vtables(void) {
             VTABLE_ADD_FUNC(basic_streambuf_wchar_imbue));
     __ASM_VTABLE(basic_ostream_char,
             VTABLE_ADD_FUNC(basic_ostream_char_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
             );
     __ASM_VTABLE(basic_ostream_wchar,
             VTABLE_ADD_FUNC(basic_ostream_wchar_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
             );
     __ASM_VTABLE(basic_ostream_short,
             VTABLE_ADD_FUNC(basic_ostream_wchar_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
             );
     __ASM_VTABLE(basic_istream_char,
             VTABLE_ADD_FUNC(basic_istream_char_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
             );
     __ASM_VTABLE(basic_istream_wchar,
             VTABLE_ADD_FUNC(basic_istream_wchar_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
             );
     __ASM_VTABLE(basic_istream_short,
             VTABLE_ADD_FUNC(basic_istream_wchar_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
             );
     __ASM_VTABLE(basic_iostream_char,
             VTABLE_ADD_FUNC(basic_iostream_char_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
             );
     __ASM_VTABLE(basic_iostream_wchar,
             VTABLE_ADD_FUNC(basic_iostream_wchar_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
             );
     __ASM_VTABLE(basic_iostream_short,
             VTABLE_ADD_FUNC(basic_iostream_wchar_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
             );
     __ASM_VTABLE(basic_ofstream_char,
             VTABLE_ADD_FUNC(basic_ofstream_char_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
             );
     __ASM_VTABLE(basic_ofstream_wchar,
             VTABLE_ADD_FUNC(basic_ofstream_wchar_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
             );
     __ASM_VTABLE(basic_ofstream_short,
             VTABLE_ADD_FUNC(basic_ofstream_wchar_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
             );
     __ASM_VTABLE(basic_ifstream_char,
             VTABLE_ADD_FUNC(basic_ifstream_char_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
             );
     __ASM_VTABLE(basic_ifstream_wchar,
             VTABLE_ADD_FUNC(basic_ifstream_wchar_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
             );
     __ASM_VTABLE(basic_ifstream_short,
             VTABLE_ADD_FUNC(basic_ifstream_wchar_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
             );
     __ASM_VTABLE(basic_fstream_char,
             VTABLE_ADD_FUNC(basic_fstream_char_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
             );
     __ASM_VTABLE(basic_fstream_wchar,
             VTABLE_ADD_FUNC(basic_fstream_wchar_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
             );
     __ASM_VTABLE(basic_fstream_short,
             VTABLE_ADD_FUNC(basic_fstream_wchar_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
             );
     __ASM_VTABLE(basic_ostringstream_char,
             VTABLE_ADD_FUNC(basic_ostringstream_char_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
             );
     __ASM_VTABLE(basic_ostringstream_wchar,
             VTABLE_ADD_FUNC(basic_ostringstream_wchar_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
             );
     __ASM_VTABLE(basic_ostringstream_short,
             VTABLE_ADD_FUNC(basic_ostringstream_wchar_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
             );
     __ASM_VTABLE(basic_istringstream_char,
             VTABLE_ADD_FUNC(basic_istringstream_char_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
             );
     __ASM_VTABLE(basic_istringstream_wchar,
             VTABLE_ADD_FUNC(basic_istringstream_wchar_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
             );
     __ASM_VTABLE(basic_istringstream_short,
             VTABLE_ADD_FUNC(basic_istringstream_wchar_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
             );
     __ASM_VTABLE(basic_stringstream_char,
             VTABLE_ADD_FUNC(basic_stringstream_char_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
             );
     __ASM_VTABLE(basic_stringstream_wchar,
             VTABLE_ADD_FUNC(basic_stringstream_wchar_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
             );
     __ASM_VTABLE(basic_stringstream_short,
             VTABLE_ADD_FUNC(basic_stringstream_wchar_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
@@ -1162,14 +1163,14 @@ void __asm_dummy_vtables(void) {
             VTABLE_ADD_FUNC(basic_streambuf_char_imbue));
     __ASM_VTABLE(ostrstream,
             VTABLE_ADD_FUNC(ostrstream_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
             );
     __ASM_VTABLE(strstream,
             VTABLE_ADD_FUNC(strstream_vector_dtor)
-#if _MSVCP_VER >= 110
+#if _MSVCP_VER == 110
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp1)
             VTABLE_ADD_FUNC(basic_ios__Add_vtordisp2)
 #endif
@@ -1647,19 +1648,22 @@ DEFINE_THISCALL_WRAPPER(basic_streambuf_char_seekoff, 24)
 DEFINE_THISCALL_WRAPPER(basic_streambuf_char_seekoff, 20)
 #endif
 #if _MSVCP_VER >= 100
-#define call_basic_streambuf_char_seekoff(this, ret, off, way, mode) CALL_VTBL_FUNC(this, 40, fpos_int*, (basic_streambuf_char*, fpos_int*, streamoff, int, int), (this, ret, off, way, mode))
+#define call_basic_streambuf_char_seekoff(this, ret, off, way, mode) \
+        CALL_VTBL_FUNC(this, 40, fpos_mbstatet*, (basic_streambuf_char*, fpos_mbstatet*, streamoff, int, int), (this, ret, off, way, mode))
 #elif _MSVCP_VER >= 80
-#define call_basic_streambuf_char_seekoff(this, ret, off, way, mode) CALL_VTBL_FUNC(this, 36, fpos_int*, (basic_streambuf_char*, fpos_int*, streamoff, int, int), (this, ret, off, way, mode))
+#define call_basic_streambuf_char_seekoff(this, ret, off, way, mode) \
+        CALL_VTBL_FUNC(this, 36, fpos_mbstatet*, (basic_streambuf_char*, fpos_mbstatet*, streamoff, int, int), (this, ret, off, way, mode))
 #else
-#define call_basic_streambuf_char_seekoff(this, ret, off, way, mode) CALL_VTBL_FUNC(this, 32, fpos_int*, (basic_streambuf_char*, fpos_int*, streamoff, int, int), (this, ret, off, way, mode))
+#define call_basic_streambuf_char_seekoff(this, ret, off, way, mode) \
+        CALL_VTBL_FUNC(this, 32, fpos_mbstatet*, (basic_streambuf_char*, fpos_mbstatet*, streamoff, int, int), (this, ret, off, way, mode))
 #endif
-fpos_int* __thiscall basic_streambuf_char_seekoff(basic_streambuf_char *this,
-        fpos_int *ret, streamoff off, int way, int mode)
+fpos_mbstatet* __thiscall basic_streambuf_char_seekoff(basic_streambuf_char *this,
+        fpos_mbstatet *ret, streamoff off, int way, int mode)
 {
     TRACE("(%p %s %d %d)\n", this, wine_dbgstr_longlong(off), way, mode);
     ret->off = -1;
     ret->pos = 0;
-    ret->state = 0;
+    memset(&ret->state, 0, sizeof(ret->state));
     return ret;
 }
 
@@ -1674,8 +1678,8 @@ DEFINE_THISCALL_WRAPPER(basic_streambuf_char_pubseekoff, 24)
 #else
 DEFINE_THISCALL_WRAPPER(basic_streambuf_char_pubseekoff, 20)
 #endif
-fpos_int* __thiscall basic_streambuf_char_pubseekoff(basic_streambuf_char *this,
-        fpos_int *ret, streamoff off, int way, int mode)
+fpos_mbstatet* __thiscall basic_streambuf_char_pubseekoff(basic_streambuf_char *this,
+        fpos_mbstatet *ret, streamoff off, int way, int mode)
 {
     TRACE("(%p %s %d %d)\n", this, wine_dbgstr_longlong(off), way, mode);
     return call_basic_streambuf_char_seekoff(this, ret, off, way, mode);
@@ -1688,8 +1692,8 @@ DEFINE_THISCALL_WRAPPER(basic_streambuf_char_pubseekoff_old, 24)
 #else
 DEFINE_THISCALL_WRAPPER(basic_streambuf_char_pubseekoff_old, 20)
 #endif
-fpos_int* __thiscall basic_streambuf_char_pubseekoff_old(basic_streambuf_char *this,
-        fpos_int *ret, streamoff off, unsigned int way, unsigned int mode)
+fpos_mbstatet* __thiscall basic_streambuf_char_pubseekoff_old(basic_streambuf_char *this,
+        fpos_mbstatet *ret, streamoff off, unsigned int way, unsigned int mode)
 {
     TRACE("(%p %s %d %d)\n", this, wine_dbgstr_longlong(off), way, mode);
     return basic_streambuf_char_pubseekoff(this, ret, off, way, mode);
@@ -1699,39 +1703,42 @@ fpos_int* __thiscall basic_streambuf_char_pubseekoff_old(basic_streambuf_char *t
 /* ?seekpos@?$basic_streambuf@DU?$char_traits@D@std@@@std@@MEAA?AV?$fpos@H@2@V32@H@Z */
 DEFINE_THISCALL_WRAPPER(basic_streambuf_char_seekpos, 36)
 #if _MSVCP_VER >= 100
-#define call_basic_streambuf_char_seekpos(this, ret, pos, mode) CALL_VTBL_FUNC(this, 44, fpos_int*, (basic_streambuf_char*, fpos_int*, fpos_int, int), (this, ret, pos, mode))
+#define call_basic_streambuf_char_seekpos(this, ret, pos, mode) \
+        CALL_VTBL_FUNC(this, 44, fpos_mbstatet*, (basic_streambuf_char*, fpos_mbstatet*, fpos_mbstatet, int), (this, ret, pos, mode))
 #elif _MSVCP_VER >= 80
-#define call_basic_streambuf_char_seekpos(this, ret, pos, mode) CALL_VTBL_FUNC(this, 40, fpos_int*, (basic_streambuf_char*, fpos_int*, fpos_int, int), (this, ret, pos, mode))
+#define call_basic_streambuf_char_seekpos(this, ret, pos, mode) \
+        CALL_VTBL_FUNC(this, 40, fpos_mbstatet*, (basic_streambuf_char*, fpos_mbstatet*, fpos_mbstatet, int), (this, ret, pos, mode))
 #else
-#define call_basic_streambuf_char_seekpos(this, ret, pos, mode) CALL_VTBL_FUNC(this, 36, fpos_int*, (basic_streambuf_char*, fpos_int*, fpos_int, int), (this, ret, pos, mode))
+#define call_basic_streambuf_char_seekpos(this, ret, pos, mode) \
+        CALL_VTBL_FUNC(this, 36, fpos_mbstatet*, (basic_streambuf_char*, fpos_mbstatet*, fpos_mbstatet, int), (this, ret, pos, mode))
 #endif
-fpos_int* __thiscall basic_streambuf_char_seekpos(basic_streambuf_char *this,
-        fpos_int *ret, fpos_int pos, int mode)
+fpos_mbstatet* __thiscall basic_streambuf_char_seekpos(basic_streambuf_char *this,
+        fpos_mbstatet *ret, fpos_mbstatet pos, int mode)
 {
-    TRACE("(%p %s %d)\n", this, debugstr_fpos_int(&pos), mode);
+    TRACE("(%p %s %d)\n", this, debugstr_fpos_mbstatet(&pos), mode);
     ret->off = -1;
     ret->pos = 0;
-    ret->state = 0;
+    memset(&ret->state, 0, sizeof(ret->state));
     return ret;
 }
 
 /* ?pubseekpos@?$basic_streambuf@DU?$char_traits@D@std@@@std@@QAE?AV?$fpos@H@2@V32@H@Z */
 /* ?pubseekpos@?$basic_streambuf@DU?$char_traits@D@std@@@std@@QEAA?AV?$fpos@H@2@V32@H@Z */
 DEFINE_THISCALL_WRAPPER(basic_streambuf_char_pubseekpos, 36)
-fpos_int* __thiscall basic_streambuf_char_pubseekpos(basic_streambuf_char *this,
-        fpos_int *ret, fpos_int pos, int mode)
+fpos_mbstatet* __thiscall basic_streambuf_char_pubseekpos(basic_streambuf_char *this,
+        fpos_mbstatet *ret, fpos_mbstatet pos, int mode)
 {
-    TRACE("(%p %s %d)\n", this, debugstr_fpos_int(&pos), mode);
+    TRACE("(%p %s %d)\n", this, debugstr_fpos_mbstatet(&pos), mode);
     return call_basic_streambuf_char_seekpos(this, ret, pos, mode);
 }
 
 /* ?pubseekpos@?$basic_streambuf@DU?$char_traits@D@std@@@std@@QAE?AV?$fpos@H@2@V32@I@Z */
 /* ?pubseekpos@?$basic_streambuf@DU?$char_traits@D@std@@@std@@QEAA?AV?$fpos@H@2@V32@I@Z */
 DEFINE_THISCALL_WRAPPER(basic_streambuf_char_pubseekpos_old, 36)
-fpos_int* __thiscall basic_streambuf_char_pubseekpos_old(basic_streambuf_char *this,
-        fpos_int *ret, fpos_int pos, unsigned int mode)
+fpos_mbstatet* __thiscall basic_streambuf_char_pubseekpos_old(basic_streambuf_char *this,
+        fpos_mbstatet *ret, fpos_mbstatet pos, unsigned int mode)
 {
-    TRACE("(%p %s %d)\n", this, debugstr_fpos_int(&pos), mode);
+    TRACE("(%p %s %d)\n", this, debugstr_fpos_mbstatet(&pos), mode);
     return basic_streambuf_char_pubseekpos(this, ret, pos, mode);
 }
 
@@ -2552,19 +2559,22 @@ DEFINE_THISCALL_WRAPPER(basic_streambuf_wchar_seekoff, 24)
 DEFINE_THISCALL_WRAPPER(basic_streambuf_wchar_seekoff, 20)
 #endif
 #if _MSVCP_VER >= 100
-#define call_basic_streambuf_wchar_seekoff(this, ret, off, way, mode) CALL_VTBL_FUNC(this, 40, fpos_int*, (basic_streambuf_wchar*, fpos_int*, streamoff, int, int), (this, ret, off, way, mode))
+#define call_basic_streambuf_wchar_seekoff(this, ret, off, way, mode) \
+        CALL_VTBL_FUNC(this, 40, fpos_mbstatet*, (basic_streambuf_wchar*, fpos_mbstatet*, streamoff, int, int), (this, ret, off, way, mode))
 #elif _MSVCP_VER >= 80
-#define call_basic_streambuf_wchar_seekoff(this, ret, off, way, mode) CALL_VTBL_FUNC(this, 36, fpos_int*, (basic_streambuf_wchar*, fpos_int*, streamoff, int, int), (this, ret, off, way, mode))
+#define call_basic_streambuf_wchar_seekoff(this, ret, off, way, mode) \
+        CALL_VTBL_FUNC(this, 36, fpos_mbstatet*, (basic_streambuf_wchar*, fpos_mbstatet*, streamoff, int, int), (this, ret, off, way, mode))
 #else
-#define call_basic_streambuf_wchar_seekoff(this, ret, off, way, mode) CALL_VTBL_FUNC(this, 32, fpos_int*, (basic_streambuf_wchar*, fpos_int*, streamoff, int, int), (this, ret, off, way, mode))
+#define call_basic_streambuf_wchar_seekoff(this, ret, off, way, mode) \
+        CALL_VTBL_FUNC(this, 32, fpos_mbstatet*, (basic_streambuf_wchar*, fpos_mbstatet*, streamoff, int, int), (this, ret, off, way, mode))
 #endif
-fpos_int* __thiscall basic_streambuf_wchar_seekoff(basic_streambuf_wchar *this,
-        fpos_int *ret, streamoff off, int way, int mode)
+fpos_mbstatet* __thiscall basic_streambuf_wchar_seekoff(basic_streambuf_wchar *this,
+        fpos_mbstatet *ret, streamoff off, int way, int mode)
 {
     TRACE("(%p %s %d %d)\n", this, wine_dbgstr_longlong(off), way, mode);
     ret->off = -1;
     ret->pos = 0;
-    ret->state = 0;
+    memset(&ret->state, 0, sizeof(ret->state));
     return ret;
 }
 
@@ -2581,8 +2591,8 @@ DEFINE_THISCALL_WRAPPER(basic_streambuf_wchar_pubseekoff, 24)
 #else
 DEFINE_THISCALL_WRAPPER(basic_streambuf_wchar_pubseekoff, 20)
 #endif
-fpos_int* __thiscall basic_streambuf_wchar_pubseekoff(basic_streambuf_wchar *this,
-        fpos_int *ret, streamoff off, int way, int mode)
+fpos_mbstatet* __thiscall basic_streambuf_wchar_pubseekoff(basic_streambuf_wchar *this,
+        fpos_mbstatet *ret, streamoff off, int way, int mode)
 {
     TRACE("(%p %s %d %d)\n", this, wine_dbgstr_longlong(off), way, mode);
     return call_basic_streambuf_wchar_seekoff(this, ret, off, way, mode);
@@ -2597,8 +2607,8 @@ DEFINE_THISCALL_WRAPPER(basic_streambuf_wchar_pubseekoff_old, 24)
 #else
 DEFINE_THISCALL_WRAPPER(basic_streambuf_wchar_pubseekoff_old, 20)
 #endif
-fpos_int* __thiscall basic_streambuf_wchar_pubseekoff_old(basic_streambuf_wchar *this,
-        fpos_int *ret, streamoff off, unsigned int way, unsigned int mode)
+fpos_mbstatet* __thiscall basic_streambuf_wchar_pubseekoff_old(basic_streambuf_wchar *this,
+        fpos_mbstatet *ret, streamoff off, unsigned int way, unsigned int mode)
 {
     TRACE("(%p %s %d %d)\n", this, wine_dbgstr_longlong(off), way, mode);
     return basic_streambuf_wchar_pubseekoff(this, ret, off, way, mode);
@@ -2610,19 +2620,22 @@ fpos_int* __thiscall basic_streambuf_wchar_pubseekoff_old(basic_streambuf_wchar 
 /* ?seekpos@?$basic_streambuf@GU?$char_traits@G@std@@@std@@MEAA?AV?$fpos@H@2@V32@H@Z */
 DEFINE_THISCALL_WRAPPER(basic_streambuf_wchar_seekpos, 36)
 #if _MSVCP_VER >= 100
-#define call_basic_streambuf_wchar_seekpos(this, ret, pos, mode) CALL_VTBL_FUNC(this, 44, fpos_int*, (basic_streambuf_wchar*, fpos_int*, fpos_int, int), (this, ret, pos, mode))
+#define call_basic_streambuf_wchar_seekpos(this, ret, pos, mode) \
+        CALL_VTBL_FUNC(this, 44, fpos_mbstatet*, (basic_streambuf_wchar*, fpos_mbstatet*, fpos_mbstatet, int), (this, ret, pos, mode))
 #elif _MSVCP_VER >= 80
-#define call_basic_streambuf_wchar_seekpos(this, ret, pos, mode) CALL_VTBL_FUNC(this, 40, fpos_int*, (basic_streambuf_wchar*, fpos_int*, fpos_int, int), (this, ret, pos, mode))
+#define call_basic_streambuf_wchar_seekpos(this, ret, pos, mode) \
+        CALL_VTBL_FUNC(this, 40, fpos_mbstatet*, (basic_streambuf_wchar*, fpos_mbstatet*, fpos_mbstatet, int), (this, ret, pos, mode))
 #else
-#define call_basic_streambuf_wchar_seekpos(this, ret, pos, mode) CALL_VTBL_FUNC(this, 36, fpos_int*, (basic_streambuf_wchar*, fpos_int*, fpos_int, int), (this, ret, pos, mode))
+#define call_basic_streambuf_wchar_seekpos(this, ret, pos, mode) \
+        CALL_VTBL_FUNC(this, 36, fpos_mbstatet*, (basic_streambuf_wchar*, fpos_mbstatet*, fpos_mbstatet, int), (this, ret, pos, mode))
 #endif
-fpos_int* __thiscall basic_streambuf_wchar_seekpos(basic_streambuf_wchar *this,
-        fpos_int *ret, fpos_int pos, int mode)
+fpos_mbstatet* __thiscall basic_streambuf_wchar_seekpos(basic_streambuf_wchar *this,
+        fpos_mbstatet *ret, fpos_mbstatet pos, int mode)
 {
-    TRACE("(%p %s %d)\n", this, debugstr_fpos_int(&pos), mode);
+    TRACE("(%p %s %d)\n", this, debugstr_fpos_mbstatet(&pos), mode);
     ret->off = -1;
     ret->pos = 0;
-    ret->state = 0;
+    memset(&ret->state, 0, sizeof(ret->state));
     return ret;
 }
 
@@ -2631,10 +2644,10 @@ fpos_int* __thiscall basic_streambuf_wchar_seekpos(basic_streambuf_wchar *this,
 /* ?pubseekpos@?$basic_streambuf@GU?$char_traits@G@std@@@std@@QAE?AV?$fpos@H@2@V32@H@Z */
 /* ?pubseekpos@?$basic_streambuf@GU?$char_traits@G@std@@@std@@QEAA?AV?$fpos@H@2@V32@H@Z */
 DEFINE_THISCALL_WRAPPER(basic_streambuf_wchar_pubseekpos, 36)
-fpos_int* __thiscall basic_streambuf_wchar_pubseekpos(basic_streambuf_wchar *this,
-        fpos_int *ret, fpos_int pos, int mode)
+fpos_mbstatet* __thiscall basic_streambuf_wchar_pubseekpos(basic_streambuf_wchar *this,
+        fpos_mbstatet *ret, fpos_mbstatet pos, int mode)
 {
-    TRACE("(%p %s %d)\n", this, debugstr_fpos_int(&pos), mode);
+    TRACE("(%p %s %d)\n", this, debugstr_fpos_mbstatet(&pos), mode);
     return call_basic_streambuf_wchar_seekpos(this, ret, pos, mode);
 }
 
@@ -2643,10 +2656,10 @@ fpos_int* __thiscall basic_streambuf_wchar_pubseekpos(basic_streambuf_wchar *thi
 /* ?pubseekpos@?$basic_streambuf@GU?$char_traits@G@std@@@std@@QAE?AV?$fpos@H@2@V32@I@Z */
 /* ?pubseekpos@?$basic_streambuf@GU?$char_traits@G@std@@@std@@QEAA?AV?$fpos@H@2@V32@I@Z */
 DEFINE_THISCALL_WRAPPER(basic_streambuf_wchar_pubseekpos_old, 36)
-fpos_int* __thiscall basic_streambuf_wchar_pubseekpos_old(basic_streambuf_wchar *this,
-        fpos_int *ret, fpos_int pos, unsigned int mode)
+fpos_mbstatet* __thiscall basic_streambuf_wchar_pubseekpos_old(basic_streambuf_wchar *this,
+        fpos_mbstatet *ret, fpos_mbstatet pos, unsigned int mode)
 {
-    TRACE("(%p %s %d)\n", this, debugstr_fpos_int(&pos), mode);
+    TRACE("(%p %s %d)\n", this, debugstr_fpos_mbstatet(&pos), mode);
     return basic_streambuf_wchar_pubseekpos(this, ret, pos, mode);
 }
 
@@ -2962,7 +2975,11 @@ void __thiscall basic_streambuf_wchar_swap(basic_streambuf_wchar *this, basic_st
 
 /* ?_Stinit@?1??_Init@?$basic_filebuf@DU?$char_traits@D@std@@@std@@IAEXPAU_iobuf@@W4_Initfl@23@@Z@4HA */
 /* ?_Stinit@?1??_Init@?$basic_filebuf@DU?$char_traits@D@std@@@std@@IEAAXPEAU_iobuf@@W4_Initfl@23@@Z@4HA */
-int basic_filebuf_char__Init__Stinit = 0;
+#if _MSVCP_VER >= 140
+_Mbstatet basic_filebuf_char__Init__Stinit = {0};
+#else
+_Mbstatet basic_filebuf_char__Init__Stinit = 0;
+#endif
 
 /* ?_Init@?$basic_filebuf@DU?$char_traits@D@std@@@std@@IAEXPAU_iobuf@@W4_Initfl@12@@Z */
 /* ?_Init@?$basic_filebuf@DU?$char_traits@D@std@@@std@@IEAAXPEAU_iobuf@@W4_Initfl@12@@Z */
@@ -3459,8 +3476,8 @@ DEFINE_THISCALL_WRAPPER(basic_filebuf_char_seekoff, 24)
 #else
 DEFINE_THISCALL_WRAPPER(basic_filebuf_char_seekoff, 20)
 #endif
-fpos_int* __thiscall basic_filebuf_char_seekoff(basic_filebuf_char *this,
-        fpos_int *ret, streamoff off, int way, int mode)
+fpos_mbstatet* __thiscall basic_filebuf_char_seekoff(basic_filebuf_char *this,
+        fpos_mbstatet *ret, streamoff off, int way, int mode)
 {
     fpos_t pos;
 
@@ -3470,7 +3487,7 @@ fpos_int* __thiscall basic_filebuf_char_seekoff(basic_filebuf_char *this,
             || fseek(this->file, off, way)) {
         ret->off = -1;
         ret->pos = 0;
-        ret->state = 0;
+        memset(&ret->state, 0, sizeof(ret->state));
         return ret;
     }
 
@@ -3484,19 +3501,19 @@ fpos_int* __thiscall basic_filebuf_char_seekoff(basic_filebuf_char *this,
 /* ?seekpos@?$basic_filebuf@DU?$char_traits@D@std@@@std@@MAE?AV?$fpos@H@2@V32@H@Z */
 /* ?seekpos@?$basic_filebuf@DU?$char_traits@D@std@@@std@@MEAA?AV?$fpos@H@2@V32@H@Z */
 DEFINE_THISCALL_WRAPPER(basic_filebuf_char_seekpos, 36)
-fpos_int* __thiscall basic_filebuf_char_seekpos(basic_filebuf_char *this,
-        fpos_int *ret, fpos_int pos, int mode)
+fpos_mbstatet* __thiscall basic_filebuf_char_seekpos(basic_filebuf_char *this,
+        fpos_mbstatet *ret, fpos_mbstatet pos, int mode)
 {
     fpos_t fpos;
 
-    TRACE("(%p %p %s %d)\n", this, ret, debugstr_fpos_int(&pos), mode);
+    TRACE("(%p %p %s %d)\n", this, ret, debugstr_fpos_mbstatet(&pos), mode);
 
     if(!basic_filebuf_char_is_open(this) || !basic_filebuf_char__Endwrite(this)
             || fseek(this->file, (LONG)pos.pos, SEEK_SET)
             || (pos.off && fseek(this->file, pos.off, SEEK_CUR))) {
         ret->off = -1;
         ret->pos = 0;
-        ret->state = 0;
+        memset(&ret->state, 0, sizeof(ret->state));
         return ret;
     }
 
@@ -3554,11 +3571,19 @@ void __thiscall basic_filebuf_char_imbue(basic_filebuf_char *this, const locale 
 
 /* ?_Stinit@?1??_Init@?$basic_filebuf@_WU?$char_traits@_W@std@@@std@@IAEXPAU_iobuf@@W4_Initfl@23@@Z@4HA */
 /* ?_Stinit@?1??_Init@?$basic_filebuf@_WU?$char_traits@_W@std@@@std@@IEAAXPEAU_iobuf@@W4_Initfl@23@@Z@4HA */
-int basic_filebuf_wchar__Init__Stinit = 0;
+#if _MSVCP_VER >= 140
+_Mbstatet basic_filebuf_wchar__Init__Stinit = {0};
+#else
+_Mbstatet basic_filebuf_wchar__Init__Stinit = 0;
+#endif
 
 /* ?_Stinit@?1??_Init@?$basic_filebuf@GU?$char_traits@G@std@@@std@@IAEXPAU_iobuf@@W4_Initfl@23@@Z@4HA */
 /* ?_Stinit@?1??_Init@?$basic_filebuf@GU?$char_traits@G@std@@@std@@IEAAXPEAU_iobuf@@W4_Initfl@23@@Z@4HA */
-int basic_filebuf_short__Init__Stinit = 0;
+#if _MSVCP_VER >= 140
+_Mbstatet basic_filebuf_short__Init__Stinit = {0};
+#else
+_Mbstatet basic_filebuf_short__Init__Stinit = 0;
+#endif
 
 /* ?_Init@?$basic_filebuf@_WU?$char_traits@_W@std@@@std@@IAEXPAU_iobuf@@W4_Initfl@12@@Z */
 /* ?_Init@?$basic_filebuf@_WU?$char_traits@_W@std@@@std@@IEAAXPEAU_iobuf@@W4_Initfl@12@@Z */
@@ -4100,8 +4125,8 @@ DEFINE_THISCALL_WRAPPER(basic_filebuf_wchar_seekoff, 24)
 #else
 DEFINE_THISCALL_WRAPPER(basic_filebuf_wchar_seekoff, 20)
 #endif
-fpos_int* __thiscall basic_filebuf_wchar_seekoff(basic_filebuf_wchar *this,
-        fpos_int *ret, streamoff off, int way, int mode)
+fpos_mbstatet* __thiscall basic_filebuf_wchar_seekoff(basic_filebuf_wchar *this,
+        fpos_mbstatet *ret, streamoff off, int way, int mode)
 {
     fpos_t pos;
 
@@ -4118,7 +4143,7 @@ fpos_int* __thiscall basic_filebuf_wchar_seekoff(basic_filebuf_wchar *this,
             || fseek(this->file, off, way)) {
         ret->off = -1;
         ret->pos = 0;
-        ret->state = 0;
+        memset(&ret->state, 0, sizeof(ret->state));
         return ret;
     }
 
@@ -4134,19 +4159,19 @@ fpos_int* __thiscall basic_filebuf_wchar_seekoff(basic_filebuf_wchar *this,
 /* ?seekpos@?$basic_filebuf@GU?$char_traits@G@std@@@std@@MAE?AV?$fpos@H@2@V32@H@Z */
 /* ?seekpos@?$basic_filebuf@GU?$char_traits@G@std@@@std@@MEAA?AV?$fpos@H@2@V32@H@Z */
 DEFINE_THISCALL_WRAPPER(basic_filebuf_wchar_seekpos, 36)
-fpos_int* __thiscall basic_filebuf_wchar_seekpos(basic_filebuf_wchar *this,
-        fpos_int *ret, fpos_int pos, int mode)
+fpos_mbstatet* __thiscall basic_filebuf_wchar_seekpos(basic_filebuf_wchar *this,
+        fpos_mbstatet *ret, fpos_mbstatet pos, int mode)
 {
     fpos_t fpos;
 
-    TRACE("(%p %p %s %d)\n", this, ret, debugstr_fpos_int(&pos), mode);
+    TRACE("(%p %p %s %d)\n", this, ret, debugstr_fpos_mbstatet(&pos), mode);
 
     if(!basic_filebuf_wchar_is_open(this) || !basic_filebuf_wchar__Endwrite(this)
             || fseek(this->file, (LONG)pos.pos, SEEK_SET)
             || (pos.off && fseek(this->file, pos.off, SEEK_CUR))) {
         ret->off = -1;
         ret->pos = 0;
-        ret->state = 0;
+        memset(&ret->state, 0, sizeof(ret->state));
         return ret;
     }
 
@@ -4502,8 +4527,8 @@ DEFINE_THISCALL_WRAPPER(basic_stringbuf_char_seekoff, 24)
 #else
 DEFINE_THISCALL_WRAPPER(basic_stringbuf_char_seekoff, 20)
 #endif
-fpos_int* __thiscall basic_stringbuf_char_seekoff(basic_stringbuf_char *this,
-        fpos_int *ret, streamoff off, int way, int mode)
+fpos_mbstatet* __thiscall basic_stringbuf_char_seekoff(basic_stringbuf_char *this,
+        fpos_mbstatet *ret, streamoff off, int way, int mode)
 {
     char *beg, *cur_r, *cur_w;
 
@@ -4515,7 +4540,7 @@ fpos_int* __thiscall basic_stringbuf_char_seekoff(basic_stringbuf_char *this,
 
     ret->off = 0;
     ret->pos = 0;
-    ret->state = 0;
+    memset(&ret->state, 0, sizeof(ret->state));
 
     beg = basic_streambuf_char_eback(&this->base);
     cur_r = basic_streambuf_char_gptr(&this->base);
@@ -4560,12 +4585,12 @@ fpos_int* __thiscall basic_stringbuf_char_seekoff(basic_stringbuf_char *this,
 /* ?seekpos@?$basic_stringbuf@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@MAE?AV?$fpos@H@2@V32@H@Z */
 /* ?seekpos@?$basic_stringbuf@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@MEAA?AV?$fpos@H@2@V32@H@Z */
 DEFINE_THISCALL_WRAPPER(basic_stringbuf_char_seekpos, 36)
-fpos_int* __thiscall basic_stringbuf_char_seekpos(basic_stringbuf_char *this,
-        fpos_int *ret, fpos_int pos, int mode)
+fpos_mbstatet* __thiscall basic_stringbuf_char_seekpos(basic_stringbuf_char *this,
+        fpos_mbstatet *ret, fpos_mbstatet pos, int mode)
 {
-    TRACE("(%p %p %s %d)\n", this, ret, debugstr_fpos_int(&pos), mode);
+    TRACE("(%p %p %s %d)\n", this, ret, debugstr_fpos_mbstatet(&pos), mode);
 
-    if(pos.off==-1 && pos.pos==0 && pos.state==0) {
+    if(pos.off==-1 && pos.pos==0 && MBSTATET_TO_INT(&pos.state)==0) {
         *ret = pos;
         return ret;
     }
@@ -4921,8 +4946,8 @@ DEFINE_THISCALL_WRAPPER(basic_stringbuf_wchar_seekoff, 24)
 #else
 DEFINE_THISCALL_WRAPPER(basic_stringbuf_wchar_seekoff, 20)
 #endif
-fpos_int* __thiscall basic_stringbuf_wchar_seekoff(basic_stringbuf_wchar *this,
-        fpos_int *ret, streamoff off, int way, int mode)
+fpos_mbstatet* __thiscall basic_stringbuf_wchar_seekoff(basic_stringbuf_wchar *this,
+        fpos_mbstatet *ret, streamoff off, int way, int mode)
 {
     wchar_t *beg, *cur_r, *cur_w;
 
@@ -4934,7 +4959,7 @@ fpos_int* __thiscall basic_stringbuf_wchar_seekoff(basic_stringbuf_wchar *this,
 
     ret->off = 0;
     ret->pos = 0;
-    ret->state = 0;
+    memset(&ret->state, 0, sizeof(ret->state));
 
     beg = basic_streambuf_wchar_eback(&this->base);
     cur_r = basic_streambuf_wchar_gptr(&this->base);
@@ -4981,12 +5006,12 @@ fpos_int* __thiscall basic_stringbuf_wchar_seekoff(basic_stringbuf_wchar *this,
 /* ?seekpos@?$basic_stringbuf@GU?$char_traits@G@std@@V?$allocator@G@2@@std@@MAE?AV?$fpos@H@2@V32@H@Z */
 /* ?seekpos@?$basic_stringbuf@GU?$char_traits@G@std@@V?$allocator@G@2@@std@@MEAA?AV?$fpos@H@2@V32@H@Z */
 DEFINE_THISCALL_WRAPPER(basic_stringbuf_wchar_seekpos, 36)
-fpos_int* __thiscall basic_stringbuf_wchar_seekpos(basic_stringbuf_wchar *this,
-        fpos_int *ret, fpos_int pos, int mode)
+fpos_mbstatet* __thiscall basic_stringbuf_wchar_seekpos(basic_stringbuf_wchar *this,
+        fpos_mbstatet *ret, fpos_mbstatet pos, int mode)
 {
-    TRACE("(%p %p %s %d)\n", this, ret, debugstr_fpos_int(&pos), mode);
+    TRACE("(%p %p %s %d)\n", this, ret, debugstr_fpos_mbstatet(&pos), mode);
 
-    if(pos.off==-1 && pos.pos==0 && pos.state==0) {
+    if(pos.off==-1 && pos.pos==0 && MBSTATET_TO_INT(&pos.state)==0) {
         *ret = pos;
         return ret;
     }
@@ -6433,11 +6458,11 @@ basic_ostream_char* __thiscall basic_ostream_char_seekp(basic_ostream_char *this
     TRACE("(%p %s %d)\n", this, wine_dbgstr_longlong(off), way);
 
     if(!ios_base_fail(&base->base)) {
-        fpos_int seek;
+        fpos_mbstatet seek;
 
         basic_streambuf_char_pubseekoff(basic_ios_char_rdbuf_get(base),
                 &seek, off, way, OPENMODE_out);
-        if(seek.off==-1 && seek.pos==0 && seek.state==0)
+        if(seek.off==-1 && seek.pos==0 && MBSTATET_TO_INT(&seek.state)==0)
             basic_ios_char_setstate(base, IOSTATE_failbit);
     }
     return this;
@@ -6446,18 +6471,18 @@ basic_ostream_char* __thiscall basic_ostream_char_seekp(basic_ostream_char *this
 /* ?seekp@?$basic_ostream@DU?$char_traits@D@std@@@std@@QAEAAV12@V?$fpos@H@2@@Z */
 /* ?seekp@?$basic_ostream@DU?$char_traits@D@std@@@std@@QEAAAEAV12@V?$fpos@H@2@@Z */
 DEFINE_THISCALL_WRAPPER(basic_ostream_char_seekp_fpos, 28)
-basic_ostream_char* __thiscall basic_ostream_char_seekp_fpos(basic_ostream_char *this, fpos_int pos)
+basic_ostream_char* __thiscall basic_ostream_char_seekp_fpos(basic_ostream_char *this, fpos_mbstatet pos)
 {
     basic_ios_char *base = basic_ostream_char_get_basic_ios(this);
 
-    TRACE("(%p %s)\n", this, debugstr_fpos_int(&pos));
+    TRACE("(%p %s)\n", this, debugstr_fpos_mbstatet(&pos));
 
     if(!ios_base_fail(&base->base)) {
-        fpos_int seek;
+        fpos_mbstatet seek;
 
         basic_streambuf_char_pubseekpos(basic_ios_char_rdbuf_get(base),
                 &seek, pos, OPENMODE_out);
-        if(seek.off==-1 && seek.pos==0 && seek.state==0)
+        if(seek.off==-1 && seek.pos==0 && MBSTATET_TO_INT(&seek.state)==0)
             basic_ios_char_setstate(base, IOSTATE_failbit);
     }
     return this;
@@ -6466,7 +6491,7 @@ basic_ostream_char* __thiscall basic_ostream_char_seekp_fpos(basic_ostream_char 
 /* ?tellp@?$basic_ostream@DU?$char_traits@D@std@@@std@@QAE?AV?$fpos@H@2@XZ */
 /* ?tellp@?$basic_ostream@DU?$char_traits@D@std@@@std@@QEAA?AV?$fpos@H@2@XZ */
 DEFINE_THISCALL_WRAPPER(basic_ostream_char_tellp, 8)
-fpos_int* __thiscall basic_ostream_char_tellp(basic_ostream_char *this, fpos_int *ret)
+fpos_mbstatet* __thiscall basic_ostream_char_tellp(basic_ostream_char *this, fpos_mbstatet *ret)
 {
     basic_ios_char *base = basic_ostream_char_get_basic_ios(this);
 
@@ -6478,7 +6503,7 @@ fpos_int* __thiscall basic_ostream_char_tellp(basic_ostream_char *this, fpos_int
     }else {
         ret->off = -1;
         ret->pos = 0;
-        ret->state = 0;
+        memset(&ret->state, 0, sizeof(ret->state));
     }
     return ret;
 }
@@ -7301,11 +7326,11 @@ basic_ostream_wchar* __thiscall basic_ostream_wchar_seekp(basic_ostream_wchar *t
     TRACE("(%p %s %d)\n", this, wine_dbgstr_longlong(off), way);
 
     if(!ios_base_fail(&base->base)) {
-        fpos_int seek;
+        fpos_mbstatet seek;
 
         basic_streambuf_wchar_pubseekoff(basic_ios_wchar_rdbuf_get(base),
                 &seek, off, way, OPENMODE_out);
-        if(seek.off==-1 && seek.pos==0 && seek.state==0)
+        if(seek.off==-1 && seek.pos==0 && MBSTATET_TO_INT(&seek.state)==0)
             basic_ios_wchar_setstate(base, IOSTATE_failbit);
     }
     return this;
@@ -7316,18 +7341,18 @@ basic_ostream_wchar* __thiscall basic_ostream_wchar_seekp(basic_ostream_wchar *t
 /* ?seekp@?$basic_ostream@GU?$char_traits@G@std@@@std@@QAEAAV12@V?$fpos@H@2@@Z */
 /* ?seekp@?$basic_ostream@GU?$char_traits@G@std@@@std@@QEAAAEAV12@V?$fpos@H@2@@Z */
 DEFINE_THISCALL_WRAPPER(basic_ostream_wchar_seekp_fpos, 28)
-basic_ostream_wchar* __thiscall basic_ostream_wchar_seekp_fpos(basic_ostream_wchar *this, fpos_int pos)
+basic_ostream_wchar* __thiscall basic_ostream_wchar_seekp_fpos(basic_ostream_wchar *this, fpos_mbstatet pos)
 {
     basic_ios_wchar *base = basic_ostream_wchar_get_basic_ios(this);
 
-    TRACE("(%p %s)\n", this, debugstr_fpos_int(&pos));
+    TRACE("(%p %s)\n", this, debugstr_fpos_mbstatet(&pos));
 
     if(!ios_base_fail(&base->base)) {
-        fpos_int seek;
+        fpos_mbstatet seek;
 
         basic_streambuf_wchar_pubseekpos(basic_ios_wchar_rdbuf_get(base),
                 &seek, pos, OPENMODE_out);
-        if(seek.off==-1 && seek.pos==0 && seek.state==0)
+        if(seek.off==-1 && seek.pos==0 && MBSTATET_TO_INT(&seek.state)==0)
             basic_ios_wchar_setstate(base, IOSTATE_failbit);
     }
     return this;
@@ -7338,7 +7363,7 @@ basic_ostream_wchar* __thiscall basic_ostream_wchar_seekp_fpos(basic_ostream_wch
 /* ?tellp@?$basic_ostream@GU?$char_traits@G@std@@@std@@QAE?AV?$fpos@H@2@XZ */
 /* ?tellp@?$basic_ostream@GU?$char_traits@G@std@@@std@@QEAA?AV?$fpos@H@2@XZ */
 DEFINE_THISCALL_WRAPPER(basic_ostream_wchar_tellp, 8)
-fpos_int* __thiscall basic_ostream_wchar_tellp(basic_ostream_wchar *this, fpos_int *ret)
+fpos_mbstatet* __thiscall basic_ostream_wchar_tellp(basic_ostream_wchar *this, fpos_mbstatet *ret)
 {
     basic_ios_wchar *base = basic_ostream_wchar_get_basic_ios(this);
 
@@ -7350,7 +7375,7 @@ fpos_int* __thiscall basic_ostream_wchar_tellp(basic_ostream_wchar *this, fpos_i
     }else {
         ret->off = -1;
         ret->pos = 0;
-        ret->state = 0;
+        memset(&ret->state, 0, sizeof(ret->state));
     }
     return ret;
 }
@@ -8740,7 +8765,7 @@ int __thiscall basic_istream_char_sync(basic_istream_char *this)
 /* ?tellg@?$basic_istream@DU?$char_traits@D@std@@@std@@QAE?AV?$fpos@H@2@XZ */
 /* ?tellg@?$basic_istream@DU?$char_traits@D@std@@@std@@QEAA?AV?$fpos@H@2@XZ */
 DEFINE_THISCALL_WRAPPER(basic_istream_char_tellg, 8)
-fpos_int* __thiscall basic_istream_char_tellg(basic_istream_char *this, fpos_int *ret)
+fpos_mbstatet* __thiscall basic_istream_char_tellg(basic_istream_char *this, fpos_mbstatet *ret)
 {
     basic_ios_char *base = basic_istream_char_get_basic_ios(this);
 
@@ -8751,26 +8776,26 @@ fpos_int* __thiscall basic_istream_char_tellg(basic_istream_char *this, fpos_int
         basic_streambuf_char_pubseekoff(basic_ios_char_rdbuf_get(base),
                 ret, 0, SEEKDIR_cur, OPENMODE_in);
 
-        if(ret->off==-1 && ret->pos==0 && ret->state==0)
+        if(ret->off==-1 && ret->pos==0 && MBSTATET_TO_INT(&ret->state)==0)
             basic_ios_char_setstate(base, IOSTATE_failbit);
     }else {
         ret->off = -1;
         ret->pos = 0;
-        ret->state = 0;
+        memset(&ret->state, 0, sizeof(ret->state));
     }
     basic_istream_char_sentry_destroy(this);
 #else
     if(ios_base_fail(&base->base)) {
         ret->off = -1;
         ret->pos = 0;
-        ret->state = 0;
+        memset(&ret->state, 0, sizeof(ret->state));
         return ret;
     }
 
     basic_streambuf_char_pubseekoff(basic_ios_char_rdbuf_get(base),
             ret, 0, SEEKDIR_cur, OPENMODE_in);
 
-    if(ret->off==-1 && ret->pos==0 && ret->state==0)
+    if(ret->off==-1 && ret->pos==0 && MBSTATET_TO_INT(&ret->state)==0)
         basic_ios_char_setstate(base, IOSTATE_failbit);
 #endif
 
@@ -8799,11 +8824,11 @@ basic_istream_char* __thiscall basic_istream_char_seekg(basic_istream_char *this
 
     if(basic_istream_char_sentry_create(this, TRUE)) {
         basic_streambuf_char *strbuf = basic_ios_char_rdbuf_get(base);
-        fpos_int ret;
+        fpos_mbstatet ret;
 
         basic_streambuf_char_pubseekoff(strbuf, &ret, off, dir, OPENMODE_in);
 
-        if(ret.off==-1 && ret.pos==0 && ret.state==0)
+        if(ret.off==-1 && ret.pos==0 && MBSTATET_TO_INT(&ret.state)==0)
             basic_ios_char_setstate(base, IOSTATE_failbit);
     }
     basic_istream_char_sentry_destroy(this);
@@ -8812,11 +8837,11 @@ basic_istream_char* __thiscall basic_istream_char_seekg(basic_istream_char *this
 
     if(!ios_base_fail(&base->base)) {
         basic_streambuf_char *strbuf = basic_ios_char_rdbuf_get(base);
-        fpos_int ret;
+        fpos_mbstatet ret;
 
         basic_streambuf_char_pubseekoff(strbuf, &ret, off, dir, OPENMODE_in);
 
-        if(ret.off==-1 && ret.pos==0 && ret.state==0)
+        if(ret.off==-1 && ret.pos==0 && MBSTATET_TO_INT(&ret.state)==0)
             basic_ios_char_setstate(base, IOSTATE_failbit);
         else
             basic_ios_char_clear(base, IOSTATE_goodbit);
@@ -8830,37 +8855,37 @@ basic_istream_char* __thiscall basic_istream_char_seekg(basic_istream_char *this
 /* ?seekg@?$basic_istream@DU?$char_traits@D@std@@@std@@QAEAAV12@V?$fpos@H@2@@Z */
 /* ?seekg@?$basic_istream@DU?$char_traits@D@std@@@std@@QEAAAEAV12@V?$fpos@H@2@@Z */
 DEFINE_THISCALL_WRAPPER(basic_istream_char_seekg_fpos, 28)
-basic_istream_char* __thiscall basic_istream_char_seekg_fpos(basic_istream_char *this, fpos_int pos)
+basic_istream_char* __thiscall basic_istream_char_seekg_fpos(basic_istream_char *this, fpos_mbstatet pos)
 {
     basic_ios_char *base = basic_istream_char_get_basic_ios(this);
 #if _MSVCP_VER >= 110
     IOSB_iostate state;
 
-    TRACE("(%p %s)\n", this, debugstr_fpos_int(&pos));
+    TRACE("(%p %s)\n", this, debugstr_fpos_mbstatet(&pos));
 
     state = ios_base_rdstate(&base->base);
     ios_base_clear(&base->base, state & ~IOSTATE_eofbit);
 
     if(basic_istream_char_sentry_create(this, TRUE)) {
         basic_streambuf_char *strbuf = basic_ios_char_rdbuf_get(base);
-        fpos_int ret;
+        fpos_mbstatet ret;
 
         basic_streambuf_char_pubseekpos(strbuf, &ret, pos, OPENMODE_in);
 
-        if(ret.off==-1 && ret.pos==0 && ret.state==0)
+        if(ret.off==-1 && ret.pos==0 && MBSTATET_TO_INT(&ret.state)==0)
             basic_ios_char_setstate(base, IOSTATE_failbit);
     }
     basic_istream_char_sentry_destroy(this);
 #else
-    TRACE("(%p %s)\n", this, debugstr_fpos_int(&pos));
+    TRACE("(%p %s)\n", this, debugstr_fpos_mbstatet(&pos));
 
     if(!ios_base_fail(&base->base)) {
         basic_streambuf_char *strbuf = basic_ios_char_rdbuf_get(base);
-        fpos_int ret;
+        fpos_mbstatet ret;
 
         basic_streambuf_char_pubseekpos(strbuf, &ret, pos, OPENMODE_in);
 
-        if(ret.off==-1 && ret.pos==0 && ret.state==0)
+        if(ret.off==-1 && ret.pos==0 && MBSTATET_TO_INT(&ret.state)==0)
             basic_ios_char_setstate(base, IOSTATE_failbit);
         else
             basic_ios_char_clear(base, IOSTATE_goodbit);
@@ -10315,7 +10340,7 @@ int __thiscall basic_istream_wchar_sync(basic_istream_wchar *this)
 /* ?tellg@?$basic_istream@GU?$char_traits@G@std@@@std@@QAE?AV?$fpos@H@2@XZ */
 /* ?tellg@?$basic_istream@GU?$char_traits@G@std@@@std@@QEAA?AV?$fpos@H@2@XZ */
 DEFINE_THISCALL_WRAPPER(basic_istream_wchar_tellg, 8)
-fpos_int* __thiscall basic_istream_wchar_tellg(basic_istream_wchar *this, fpos_int *ret)
+fpos_mbstatet* __thiscall basic_istream_wchar_tellg(basic_istream_wchar *this, fpos_mbstatet *ret)
 {
     basic_ios_wchar *base = basic_istream_wchar_get_basic_ios(this);
 
@@ -10326,25 +10351,25 @@ fpos_int* __thiscall basic_istream_wchar_tellg(basic_istream_wchar *this, fpos_i
         basic_streambuf_wchar_pubseekoff(basic_ios_wchar_rdbuf_get(base),
                 ret, 0, SEEKDIR_cur, OPENMODE_in);
 
-        if(ret->off==-1 && ret->pos==0 && ret->state==0)
+        if(ret->off==-1 && ret->pos==0 && MBSTATET_TO_INT(&ret->state)==0)
             basic_ios_wchar_setstate(base, IOSTATE_failbit);
     }else {
         ret->off = -1;
         ret->pos = 0;
-        ret->state = 0;
+        memset(&ret->state, 0, sizeof(ret->state));
     }
     basic_istream_wchar_sentry_destroy(this);
 #else
     if(ios_base_fail(&base->base)) {
         ret->off = -1;
         ret->pos = 0;
-        ret->state = 0;
+        memset(&ret->state, 0, sizeof(ret->state));
         return ret;
     }
 
     basic_streambuf_wchar_pubseekoff(basic_ios_wchar_rdbuf_get(base),
             ret, 0, SEEKDIR_cur, OPENMODE_in);
-    if(ret->off==-1 && ret->pos==0 && ret->state==0)
+    if(ret->off==-1 && ret->pos==0 && MBSTATET_TO_INT(&ret->state)==0)
         basic_ios_wchar_setstate(base, IOSTATE_failbit);
 #endif
     return ret;
@@ -10374,11 +10399,11 @@ basic_istream_wchar* __thiscall basic_istream_wchar_seekg(basic_istream_wchar *t
 
     if(basic_istream_wchar_sentry_create(this, TRUE)) {
         basic_streambuf_wchar *strbuf = basic_ios_wchar_rdbuf_get(base);
-        fpos_int ret;
+        fpos_mbstatet ret;
 
         basic_streambuf_wchar_pubseekoff(strbuf, &ret, off, dir, OPENMODE_in);
 
-        if(ret.off==-1 && ret.pos==0 && ret.state==0)
+        if(ret.off==-1 && ret.pos==0 && MBSTATET_TO_INT(&ret.state)==0)
             basic_ios_wchar_setstate(base, IOSTATE_failbit);
     }
     basic_istream_wchar_sentry_destroy(this);
@@ -10387,11 +10412,11 @@ basic_istream_wchar* __thiscall basic_istream_wchar_seekg(basic_istream_wchar *t
 
     if(!ios_base_fail(&base->base)) {
         basic_streambuf_wchar *strbuf = basic_ios_wchar_rdbuf_get(base);
-        fpos_int ret;
+        fpos_mbstatet ret;
 
         basic_streambuf_wchar_pubseekoff(strbuf, &ret, off, dir, OPENMODE_in);
 
-        if(ret.off==-1 && ret.pos==0 && ret.state==0)
+        if(ret.off==-1 && ret.pos==0 && MBSTATET_TO_INT(&ret.state)==0)
             basic_ios_wchar_setstate(base, IOSTATE_failbit);
         else
             basic_ios_wchar_clear(base, IOSTATE_goodbit);
@@ -10407,37 +10432,37 @@ basic_istream_wchar* __thiscall basic_istream_wchar_seekg(basic_istream_wchar *t
 /* ?seekg@?$basic_istream@GU?$char_traits@G@std@@@std@@QAEAAV12@V?$fpos@H@2@@Z */
 /* ?seekg@?$basic_istream@GU?$char_traits@G@std@@@std@@QEAAAEAV12@V?$fpos@H@2@@Z */
 DEFINE_THISCALL_WRAPPER(basic_istream_wchar_seekg_fpos, 28)
-basic_istream_wchar* __thiscall basic_istream_wchar_seekg_fpos(basic_istream_wchar *this, fpos_int pos)
+basic_istream_wchar* __thiscall basic_istream_wchar_seekg_fpos(basic_istream_wchar *this, fpos_mbstatet pos)
 {
     basic_ios_wchar *base = basic_istream_wchar_get_basic_ios(this);
 #if _MSVCP_VER >= 110
     IOSB_iostate state;
 
-    TRACE("(%p %s)\n", this, debugstr_fpos_int(&pos));
+    TRACE("(%p %s)\n", this, debugstr_fpos_mbstatet(&pos));
 
     state = ios_base_rdstate(&base->base);
     ios_base_clear(&base->base, state & ~IOSTATE_eofbit);
 
     if(basic_istream_wchar_sentry_create(this, TRUE)) {
         basic_streambuf_wchar *strbuf = basic_ios_wchar_rdbuf_get(base);
-        fpos_int ret;
+        fpos_mbstatet ret;
 
         basic_streambuf_wchar_pubseekpos(strbuf, &ret, pos, OPENMODE_in);
 
-        if(ret.off==-1 && ret.pos==0 && ret.state==0)
+        if(ret.off==-1 && ret.pos==0 && MBSTATET_TO_INT(&ret.state)==0)
             basic_ios_wchar_setstate(base, IOSTATE_failbit);
     }
     basic_istream_wchar_sentry_destroy(this);
 #else
-    TRACE("(%p %s)\n", this, debugstr_fpos_int(&pos));
+    TRACE("(%p %s)\n", this, debugstr_fpos_mbstatet(&pos));
 
     if(!ios_base_fail(&base->base)) {
         basic_streambuf_wchar *strbuf = basic_ios_wchar_rdbuf_get(base);
-        fpos_int ret;
+        fpos_mbstatet ret;
 
         basic_streambuf_wchar_pubseekpos(strbuf, &ret, pos, OPENMODE_in);
 
-        if(ret.off==-1 && ret.pos==0 && ret.state==0)
+        if(ret.off==-1 && ret.pos==0 && MBSTATET_TO_INT(&ret.state)==0)
             basic_ios_wchar_setstate(base, IOSTATE_failbit);
         else
             basic_ios_wchar_clear(base, IOSTATE_goodbit);
@@ -14299,7 +14324,7 @@ DEFINE_THISCALL_WRAPPER(strstreambuf_seekoff, 24)
 #else
 DEFINE_THISCALL_WRAPPER(strstreambuf_seekoff, 20)
 #endif
-fpos_int* __thiscall strstreambuf_seekoff(strstreambuf *this, fpos_int *ret, streamoff off, int way, int mode)
+fpos_mbstatet* __thiscall strstreambuf_seekoff(strstreambuf *this, fpos_mbstatet *ret, streamoff off, int way, int mode)
 {
     char *eback = basic_streambuf_char_eback(&this->base);
     char *pptr = basic_streambuf_char_pptr(&this->base);
@@ -14308,7 +14333,7 @@ fpos_int* __thiscall strstreambuf_seekoff(strstreambuf *this, fpos_int *ret, str
     TRACE("(%p %p %s %d %d)\n", this, ret, wine_dbgstr_longlong(off), way, mode);
 
     ret->off = 0;
-    ret->state = 0;
+    memset(&ret->state, 0, sizeof(ret->state));
 
     if(pptr > this->seekhigh)
         this->seekhigh = pptr;
@@ -14353,11 +14378,11 @@ fpos_int* __thiscall strstreambuf_seekoff(strstreambuf *this, fpos_int *ret, str
 /* ?seekpos@strstreambuf@std@@MAE?AV?$fpos@H@2@V32@H@Z */
 /* ?seekpos@strstreambuf@std@@MEAA?AV?$fpos@H@2@V32@H@Z */
 DEFINE_THISCALL_WRAPPER(strstreambuf_seekpos, 36)
-fpos_int* __thiscall strstreambuf_seekpos(strstreambuf *this, fpos_int *ret, fpos_int pos, int mode)
+fpos_mbstatet* __thiscall strstreambuf_seekpos(strstreambuf *this, fpos_mbstatet *ret, fpos_mbstatet pos, int mode)
 {
-    TRACE("(%p %p %s %d)\n", this, ret, debugstr_fpos_int(&pos), mode);
+    TRACE("(%p %p %s %d)\n", this, ret, debugstr_fpos_mbstatet(&pos), mode);
 
-    if(pos.off==-1 && pos.pos==0 && pos.state==0) {
+    if(pos.off==-1 && pos.pos==0 && MBSTATET_TO_INT(&pos.state)==0) {
         *ret = pos;
         return ret;
     }
@@ -15113,8 +15138,12 @@ static basic_filebuf_char filebuf_char_stdin;
 /* ?cin@std@@3V?$basic_istream@DU?$char_traits@D@std@@@1@A */
 struct {
     basic_istream_char obj;
+#if _MSVCP_VER >= 110
+    int vtordisp;
+#endif
     basic_ios_char vbase;
 } cin = { { 0 } };
+C_ASSERT(sizeof(cin) == VBTABLE_BASIC_IOS_ENTRY(basic_istream_char, 0)+sizeof(basic_ios_char));
 /* ?_Ptr_cin@std@@3PAV?$basic_istream@DU?$char_traits@D@std@@@1@A */
 /* ?_Ptr_cin@std@@3PEAV?$basic_istream@DU?$char_traits@D@std@@@1@EA */
 basic_istream_char *_Ptr_cin = &cin.obj;
@@ -15123,8 +15152,12 @@ static basic_filebuf_wchar filebuf_short_stdin;
 /* ?wcin@std@@3V?$basic_istream@GU?$char_traits@G@std@@@1@A */
 struct {
     basic_istream_wchar obj;
+#if _MSVCP_VER >= 110
+    int vtordisp;
+#endif
     basic_ios_wchar vbase;
 } ucin = { { 0 } };
+C_ASSERT(sizeof(ucin) == VBTABLE_BASIC_IOS_ENTRY(basic_istream_wchar, 0)+sizeof(basic_ios_wchar));
 /* ?_Ptr_wcin@std@@3PAV?$basic_istream@GU?$char_traits@G@std@@@1@A */
 /* ?_Ptr_wcin@std@@3PEAV?$basic_istream@GU?$char_traits@G@std@@@1@EA */
 basic_istream_wchar *_Ptr_ucin = &ucin.obj;
@@ -15133,8 +15166,12 @@ static basic_filebuf_wchar filebuf_wchar_stdin;
 /* ?wcin@std@@3V?$basic_istream@_WU?$char_traits@_W@std@@@1@A */
 struct {
     basic_istream_wchar obj;
+#if _MSVCP_VER >= 110
+    int vtordisp;
+#endif
     basic_ios_wchar vbase;
 } wcin = { { 0 } };
+C_ASSERT(sizeof(wcin) == VBTABLE_BASIC_IOS_ENTRY(basic_istream_wchar, 0)+sizeof(basic_ios_wchar));
 /* ?_Ptr_wcin@std@@3PAV?$basic_istream@_WU?$char_traits@_W@std@@@1@A */
 /* ?_Ptr_wcin@std@@3PEAV?$basic_istream@_WU?$char_traits@_W@std@@@1@EA */
 basic_istream_wchar *_Ptr_wcin = &wcin.obj;
@@ -15143,8 +15180,12 @@ static basic_filebuf_char filebuf_char_stdout;
 /* ?cout@std@@3V?$basic_ostream@DU?$char_traits@D@std@@@1@A */
 struct {
     basic_ostream_char obj;
+#if _MSVCP_VER >= 110
+    int vtordisp;
+#endif
     basic_ios_char vbase;
 } cout = { { 0 } };
+C_ASSERT(sizeof(cout) == VBTABLE_BASIC_IOS_ENTRY(basic_ostream_char, 0)+sizeof(basic_ios_char));
 /* ?_Ptr_cout@std@@3PAV?$basic_ostream@DU?$char_traits@D@std@@@1@A */
 /* ?_Ptr_cout@std@@3PEAV?$basic_ostream@DU?$char_traits@D@std@@@1@EA */
 basic_ostream_char *_Ptr_cout = &cout.obj;
@@ -15153,8 +15194,12 @@ static basic_filebuf_wchar filebuf_short_stdout;
 /* ?wcout@std@@3V?$basic_ostream@GU?$char_traits@G@std@@@1@A */
 struct {
     basic_ostream_wchar obj;
+#if _MSVCP_VER >= 110
+    int vtordisp;
+#endif
     basic_ios_wchar vbase;
 } ucout = { { 0 } };
+C_ASSERT(sizeof(ucout) == VBTABLE_BASIC_IOS_ENTRY(basic_ostream_wchar, 0)+sizeof(basic_ios_wchar));
 /* ?_Ptr_wcout@std@@3PAV?$basic_ostream@GU?$char_traits@G@std@@@1@A */
 /* ?_Ptr_wcout@std@@3PEAV?$basic_ostream@GU?$char_traits@G@std@@@1@EA */
 basic_ostream_wchar *_Ptr_ucout = &ucout.obj;
@@ -15163,8 +15208,12 @@ static basic_filebuf_wchar filebuf_wchar_stdout;
 /* ?wcout@std@@3V?$basic_ostream@_WU?$char_traits@_W@std@@@1@A */
 struct {
     basic_ostream_wchar obj;
+#if _MSVCP_VER >= 110
+    int vtordisp;
+#endif
     basic_ios_wchar vbase;
 } wcout = { { 0 } };
+C_ASSERT(sizeof(wcout) == VBTABLE_BASIC_IOS_ENTRY(basic_ostream_wchar, 0)+sizeof(basic_ios_wchar));
 /* ?_Ptr_wcout@std@@3PAV?$basic_ostream@_WU?$char_traits@_W@std@@@1@A */
 /* ?_Ptr_wcout@std@@3PEAV?$basic_ostream@_WU?$char_traits@_W@std@@@1@EA */
 basic_ostream_wchar *_Ptr_wcout = &wcout.obj;
@@ -15173,8 +15222,12 @@ static basic_filebuf_char filebuf_char_stderr;
 /* ?cerr@std@@3V?$basic_ostream@DU?$char_traits@D@std@@@1@A */
 struct {
     basic_ostream_char obj;
+#if _MSVCP_VER >= 110
+    int vtordisp;
+#endif
     basic_ios_char vbase;
 } cerr = { { 0 } };
+C_ASSERT(sizeof(cerr) == VBTABLE_BASIC_IOS_ENTRY(basic_ostream_char, 0)+sizeof(basic_ios_char));
 /* ?_Ptr_cerr@std@@3PAV?$basic_ostream@DU?$char_traits@D@std@@@1@A */
 /* ?_Ptr_cerr@std@@3PEAV?$basic_ostream@DU?$char_traits@D@std@@@1@EA */
 basic_ostream_char *_Ptr_cerr = &cerr.obj;
@@ -15183,8 +15236,12 @@ static basic_filebuf_wchar filebuf_short_stderr;
 /* ?wcerr@std@@3V?$basic_ostream@GU?$char_traits@G@std@@@1@A */
 struct {
     basic_ostream_wchar obj;
+#if _MSVCP_VER >= 110
+    int vtordisp;
+#endif
     basic_ios_wchar vbase;
 } ucerr = { { 0 } };
+C_ASSERT(sizeof(ucerr) == VBTABLE_BASIC_IOS_ENTRY(basic_ostream_wchar, 0)+sizeof(basic_ios_wchar));
 /* ?_Ptr_wcerr@std@@3PAV?$basic_ostream@GU?$char_traits@G@std@@@1@A */
 /* ?_Ptr_wcerr@std@@3PEAV?$basic_ostream@GU?$char_traits@G@std@@@1@EA */
 basic_ostream_wchar *_Ptr_ucerr = &ucerr.obj;
@@ -15193,8 +15250,12 @@ static basic_filebuf_wchar filebuf_wchar_stderr;
 /* ?wcerr@std@@3V?$basic_ostream@_WU?$char_traits@_W@std@@@1@A */
 struct {
     basic_ostream_wchar obj;
+#if _MSVCP_VER >= 110
+    int vtordisp;
+#endif
     basic_ios_wchar vbase;
 } wcerr = { { 0 } };
+C_ASSERT(sizeof(wcerr) == VBTABLE_BASIC_IOS_ENTRY(basic_ostream_wchar, 0)+sizeof(basic_ios_wchar));
 /* ?_Ptr_wcerr@std@@3PAV?$basic_ostream@_WU?$char_traits@_W@std@@@1@A */
 /* ?_Ptr_wcerr@std@@3PEAV?$basic_ostream@_WU?$char_traits@_W@std@@@1@EA */
 basic_ostream_wchar *_Ptr_wcerr = &wcerr.obj;
@@ -15203,8 +15264,12 @@ static basic_filebuf_char filebuf_char_log;
 /* ?clog@std@@3V?$basic_ostream@DU?$char_traits@D@std@@@1@A */
 struct {
     basic_ostream_char obj;
+#if _MSVCP_VER >= 110
+    int vtordisp;
+#endif
     basic_ios_char vbase;
 } clog = { { 0 } };
+C_ASSERT(sizeof(clog) == VBTABLE_BASIC_IOS_ENTRY(basic_ostream_char, 0)+sizeof(basic_ios_char));
 /* ?_Ptr_clog@std@@3PAV?$basic_ostream@DU?$char_traits@D@std@@@1@A */
 /* ?_Ptr_clog@std@@3PEAV?$basic_ostream@DU?$char_traits@D@std@@@1@EA */
 basic_ostream_char *_Ptr_clog = &clog.obj;
@@ -15213,8 +15278,12 @@ static basic_filebuf_wchar filebuf_short_log;
 /* ?wclog@std@@3V?$basic_ostream@GU?$char_traits@G@std@@@1@A */
 struct {
     basic_ostream_wchar obj;
+#if _MSVCP_VER >= 110
+    int vtordisp;
+#endif
     basic_ios_wchar vbase;
 } uclog = { { 0 } };
+C_ASSERT(sizeof(uclog) == VBTABLE_BASIC_IOS_ENTRY(basic_ostream_wchar, 0)+sizeof(basic_ios_wchar));
 /* ?_Ptr_wclog@std@@3PAV?$basic_ostream@GU?$char_traits@G@std@@@1@A */
 /* ?_Ptr_wclog@std@@3PEAV?$basic_ostream@GU?$char_traits@G@std@@@1@EA */
 basic_ostream_wchar *_Ptr_uclog = &uclog.obj;
@@ -15223,8 +15292,12 @@ static basic_filebuf_wchar filebuf_wchar_log;
 /* ?wclog@std@@3V?$basic_ostream@_WU?$char_traits@_W@std@@@1@A */
 struct {
     basic_ostream_wchar obj;
+#if _MSVCP_VER >= 110
+    int vtordisp;
+#endif
     basic_ios_wchar vbase;
 } wclog = { { 0 } };
+C_ASSERT(sizeof(wclog) == VBTABLE_BASIC_IOS_ENTRY(basic_ostream_wchar, 0)+sizeof(basic_ios_wchar));
 /* ?_Ptr_wclog@std@@3PAV?$basic_ostream@_WU?$char_traits@_W@std@@@1@A */
 /* ?_Ptr_wclog@std@@3PEAV?$basic_ostream@_WU?$char_traits@_W@std@@@1@EA */
 basic_ostream_wchar *_Ptr_wclog = &wclog.obj;

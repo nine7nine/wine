@@ -158,7 +158,9 @@ typedef struct {
 typedef struct {
     locale_facet facet;
     _Timevec time;
+#if _MSVCP_VER <= 100
     _Cvtvec cvt;
+#endif
 } time_put;
 
 typedef struct {
@@ -2372,7 +2374,7 @@ ctype_wchar* __thiscall ctype_wchar_vector_dtor(ctype_wchar *this, unsigned int 
 }
 
 /* _Wcrtomb */
-int __cdecl _Wcrtomb(char *s, wchar_t wch, int *state, const _Cvtvec *cvt)
+int __cdecl _Wcrtomb(char *s, wchar_t wch, _Mbstatet *state, const _Cvtvec *cvt)
 {
     int cp, size;
     BOOL def;
@@ -2519,7 +2521,7 @@ const wchar_t* __thiscall ctype_wchar__Narrow_s(const ctype_wchar *this, const w
 }
 
 /* _Mbrtowc */
-int __cdecl _Mbrtowc(wchar_t *out, const char *in, MSVCP_size_t len, int *state, const _Cvtvec *cvt)
+int __cdecl _Mbrtowc(wchar_t *out, const char *in, MSVCP_size_t len, _Mbstatet *state, const _Cvtvec *cvt)
 {
     int i, cp;
     CPINFO cp_info;
@@ -2539,20 +2541,20 @@ int __cdecl _Mbrtowc(wchar_t *out, const char *in, MSVCP_size_t len, int *state,
         if(out)
             *out = (unsigned char)*in;
 
-        *state = 0;
+        memset(state, 0, sizeof(*state));
         return *in ? 1 : 0;
     }
 
-    if(*state) {
-        ((char*)state)[1] = *in;
+    if(MBSTATET_TO_INT(state)) {
+        ((char*)&MBSTATET_TO_INT(state))[1] = *in;
 
-        if(!MultiByteToWideChar(cp, MB_ERR_INVALID_CHARS, (char*)state, 2, out, out ? 1 : 0)) {
-            *state = 0;
+        if(!MultiByteToWideChar(cp, MB_ERR_INVALID_CHARS, (char*)&MBSTATET_TO_INT(state), 2, out, out ? 1 : 0)) {
+            memset(state, 0, sizeof(*state));
             *_errno() = EILSEQ;
             return -1;
         }
 
-        *state = 0;
+        memset(state, 0, sizeof(*state));
         return 2;
     }
 
@@ -2569,7 +2571,7 @@ int __cdecl _Mbrtowc(wchar_t *out, const char *in, MSVCP_size_t len, int *state,
 
     if(is_lead) {
         if(len == 1) {
-            *state = (unsigned char)*in;
+            MBSTATET_TO_INT(state) = (unsigned char)*in;
             return -2;
         }
 
@@ -2589,9 +2591,10 @@ int __cdecl _Mbrtowc(wchar_t *out, const char *in, MSVCP_size_t len, int *state,
 
 static inline wchar_t mb_to_wc(char ch, const _Cvtvec *cvt)
 {
-    int state = 0;
+    _Mbstatet state;
     wchar_t ret;
 
+    memset(&state, 0, sizeof(state));
     return _Mbrtowc(&ret, &ch, 1, &state, cvt) == 1 ? ret : 0;
 }
 
@@ -2602,9 +2605,12 @@ static inline wchar_t mb_to_wc(char ch, const _Cvtvec *cvt)
 DEFINE_THISCALL_WRAPPER(ctype_wchar__Dowiden, 8)
 wchar_t __thiscall ctype_wchar__Dowiden(const ctype_wchar *this, char ch)
 {
+    _Mbstatet state;
     wchar_t ret;
-    int state = 0;
+
     TRACE("(%p %d)\n", this, ch);
+
+    memset(&state, 0, sizeof(state));
     return _Mbrtowc(&ret, &ch, 1, &state, &this->cvt)<0 ? WEOF : ret;
 }
 
@@ -3163,7 +3169,7 @@ DEFINE_THISCALL_WRAPPER(codecvt_base_do_always_noconv, 4)
 MSVCP_bool __thiscall codecvt_base_do_always_noconv(const codecvt_base *this)
 {
     TRACE("(%p)\n", this);
-    return TRUE;
+    return _MSVCP_VER <= 100;
 }
 
 /* ?always_noconv@codecvt_base@std@@QBE_NXZ */
@@ -3351,21 +3357,30 @@ codecvt_char* codecvt_char_use_facet(const locale *loc)
     return obj;
 }
 
+/* ?do_always_noconv@?$codecvt@DDH@std@@MBE_NXZ */
+/* ?do_always_noconv@?$codecvt@DDH@std@@MEBA_NXZ */
+DEFINE_THISCALL_WRAPPER(codecvt_char_do_always_noconv, 4)
+MSVCP_bool __thiscall codecvt_char_do_always_noconv(const codecvt_char *this)
+{
+    TRACE("(%p)\n", this);
+    return TRUE;
+}
+
 /* ?do_in@?$codecvt@DDH@std@@MBEHAAHPBD1AAPBDPAD3AAPAD@Z */
 /* ?do_in@?$codecvt@DDH@std@@MEBAHAEAHPEBD1AEAPEBDPEAD3AEAPEAD@Z */
 #if _MSVCP_VER <= 100
 #define call_codecvt_char_do_in(this, state, from, from_end, from_next, to, to_end, to_next) \
     CALL_VTBL_FUNC(this, 16, int, \
-            (const codecvt_char*, int*, const char*, const char*, const char**, char*, char*, char**), \
+            (const codecvt_char*, _Mbstatet*, const char*, const char*, const char**, char*, char*, char**), \
             (this, state, from, from_end, from_next, to, to_end, to_next))
 #else
 #define call_codecvt_char_do_in(this, state, from, from_end, from_next, to, to_end, to_next) \
     CALL_VTBL_FUNC(this, 24, int, \
-            (const codecvt_char*, int*, const char*, const char*, const char**, char*, char*, char**), \
+            (const codecvt_char*, _Mbstatet*, const char*, const char*, const char**, char*, char*, char**), \
             (this, state, from, from_end, from_next, to, to_end, to_next))
 #endif
 DEFINE_THISCALL_WRAPPER(codecvt_char_do_in, 32)
-int __thiscall codecvt_char_do_in(const codecvt_char *this, int *state,
+int __thiscall codecvt_char_do_in(const codecvt_char *this, _Mbstatet *state,
         const char *from, const char *from_end, const char **from_next,
         char *to, char *to_end, char **to_next)
 {
@@ -3379,7 +3394,7 @@ int __thiscall codecvt_char_do_in(const codecvt_char *this, int *state,
 /* ?in@?$codecvt@DDH@std@@QBEHAAHPBD1AAPBDPAD3AAPAD@Z */
 /* ?in@?$codecvt@DDH@std@@QEBAHAEAHPEBD1AEAPEBDPEAD3AEAPEAD@Z */
 DEFINE_THISCALL_WRAPPER(codecvt_char_in, 32)
-int __thiscall codecvt_char_in(const codecvt_char *this, int *state,
+int __thiscall codecvt_char_in(const codecvt_char *this, _Mbstatet *state,
         const char *from, const char *from_end, const char **from_next,
         char *to, char *to_end, char **to_next)
 {
@@ -3394,16 +3409,16 @@ int __thiscall codecvt_char_in(const codecvt_char *this, int *state,
 #if _MSVCP_VER <= 100
 #define call_codecvt_char_do_out(this, state, from, from_end, from_next, to, to_end, to_next) \
     CALL_VTBL_FUNC(this, 20, int, \
-            (const codecvt_char*, int*, const char*, const char*, const char**, char*, char*, char**), \
+            (const codecvt_char*, _Mbstatet*, const char*, const char*, const char**, char*, char*, char**), \
             (this, state, from, from_end, from_next, to, to_end, to_next))
 #else
 #define call_codecvt_char_do_out(this, state, from, from_end, from_next, to, to_end, to_next) \
         CALL_VTBL_FUNC(this, 28, int, \
-                (const codecvt_char*, int*, const char*, const char*, const char**, char*, char*, char**), \
+                (const codecvt_char*, _Mbstatet*, const char*, const char*, const char**, char*, char*, char**), \
                 (this, state, from, from_end, from_next, to, to_end, to_next))
 #endif
 DEFINE_THISCALL_WRAPPER(codecvt_char_do_out, 32)
-int __thiscall codecvt_char_do_out(const codecvt_char *this, int *state,
+int __thiscall codecvt_char_do_out(const codecvt_char *this, _Mbstatet *state,
         const char *from, const char *from_end, const char **from_next,
         char *to, char *to_end, char **to_next)
 {
@@ -3417,7 +3432,7 @@ int __thiscall codecvt_char_do_out(const codecvt_char *this, int *state,
 /* ?out@?$codecvt@DDH@std@@QBEHAAHPBD1AAPBDPAD3AAPAD@Z */
 /* ?out@?$codecvt@DDH@std@@QEBAHAEAHPEBD1AEAPEBDPEAD3AEAPEAD@Z */
 DEFINE_THISCALL_WRAPPER(codecvt_char_out, 32)
-int __thiscall codecvt_char_out(const codecvt_char *this, int *state,
+int __thiscall codecvt_char_out(const codecvt_char *this, _Mbstatet *state,
         const char *from, const char *from_end, const char **from_next,
         char *to, char *to_end, char **to_next)
 {
@@ -3431,14 +3446,14 @@ int __thiscall codecvt_char_out(const codecvt_char *this, int *state,
 /* ?do_unshift@?$codecvt@DDH@std@@MEBAHAEAHPEAD1AEAPEAD@Z */
 #if _MSVCP_VER <= 100
 #define call_codecvt_char_do_unshift(this, state, to, to_end, to_next) CALL_VTBL_FUNC(this, 24, \
-        int, (const codecvt_char*, int*, char*, char*, char**), (this, state, to, to_end, to_next))
+        int, (const codecvt_char*, _Mbstatet*, char*, char*, char**), (this, state, to, to_end, to_next))
 #else
 #define call_codecvt_char_do_unshift(this, state, to, to_end, to_next) CALL_VTBL_FUNC(this, 32, \
-        int, (const codecvt_char*, int*, char*, char*, char**), (this, state, to, to_end, to_next))
+        int, (const codecvt_char*, _Mbstatet*, char*, char*, char**), (this, state, to, to_end, to_next))
 #endif
 DEFINE_THISCALL_WRAPPER(codecvt_char_do_unshift, 20)
 int __thiscall codecvt_char_do_unshift(const codecvt_char *this,
-        int *state, char *to, char *to_end, char **to_next)
+        _Mbstatet *state, char *to, char *to_end, char **to_next)
 {
     TRACE("(%p %p %p %p %p)\n", this, state, to, to_end, to_next);
     *to_next = to;
@@ -3449,7 +3464,7 @@ int __thiscall codecvt_char_do_unshift(const codecvt_char *this,
 /* ?unshift@?$codecvt@DDH@std@@QEBAHAEAHPEAD1AEAPEAD@Z */
 DEFINE_THISCALL_WRAPPER(codecvt_char_unshift, 20)
 int __thiscall codecvt_char_unshift(const codecvt_char *this,
-        int *state, char *to, char *to_end, char **to_next)
+        _Mbstatet *state, char *to, char *to_end, char **to_next)
 {
     TRACE("(%p %p %p %p %p)\n", this, state, to, to_end, to_next);
     return call_codecvt_char_do_unshift(this, state, to, to_end, to_next);
@@ -3459,15 +3474,15 @@ int __thiscall codecvt_char_unshift(const codecvt_char *this,
 /* ?do_length@?$codecvt@DDH@std@@MEBAHAEBHPEBD1_K@Z */
 #if _MSVCP_VER <= 100
 #define call_codecvt_char_do_length(this, state, from, from_end, max) CALL_VTBL_FUNC(this, 28, \
-        int, (const codecvt_char*, const int*, const char*, const char*, MSVCP_size_t), \
+        int, (const codecvt_char*, const _Mbstatet*, const char*, const char*, MSVCP_size_t), \
         (this, state, from, from_end, max))
 #else
 #define call_codecvt_char_do_length(this, state, from, from_end, max) CALL_VTBL_FUNC(this, 36, \
-        int, (const codecvt_char*, const int*, const char*, const char*, MSVCP_size_t), \
+        int, (const codecvt_char*, const _Mbstatet*, const char*, const char*, MSVCP_size_t), \
         (this, state, from, from_end, max))
 #endif
 DEFINE_THISCALL_WRAPPER(codecvt_char_do_length, 20)
-int __thiscall codecvt_char_do_length(const codecvt_char *this, const int *state,
+int __thiscall codecvt_char_do_length(const codecvt_char *this, const _Mbstatet *state,
         const char *from, const char *from_end, MSVCP_size_t max)
 {
     TRACE("(%p %p %p %p %lu)\n", this, state, from, from_end, max);
@@ -3477,7 +3492,7 @@ int __thiscall codecvt_char_do_length(const codecvt_char *this, const int *state
 /* ?length@?$codecvt@DDH@std@@QBEHABHPBD1I@Z */
 /* ?length@?$codecvt@DDH@std@@QEBAHAEBHPEBD1_K@Z */
 DEFINE_THISCALL_WRAPPER(codecvt_char_length, 20)
-int __thiscall codecvt_char_length(const codecvt_char *this, const int *state,
+int __thiscall codecvt_char_length(const codecvt_char *this, const _Mbstatet *state,
         const char *from, const char *from_end, MSVCP_size_t max)
 {
     TRACE("(%p %p %p %p %lu)\n", this, state, from, from_end, max);
@@ -3799,16 +3814,16 @@ int __thiscall codecvt_wchar_do_encoding(const codecvt_wchar *this)
 #if _MSVCP_VER <= 100
 #define call_codecvt_wchar_do_in(this, state, from, from_end, from_next, to, to_end, to_next) \
     CALL_VTBL_FUNC(this, 16, int, \
-            (const codecvt_wchar*, int*, const char*, const char*, const char**, wchar_t*, wchar_t*, wchar_t**), \
+            (const codecvt_wchar*, _Mbstatet*, const char*, const char*, const char**, wchar_t*, wchar_t*, wchar_t**), \
             (this, state, from, from_end, from_next, to, to_end, to_next))
 #else
 #define call_codecvt_wchar_do_in(this, state, from, from_end, from_next, to, to_end, to_next) \
     CALL_VTBL_FUNC(this, 24, int, \
-            (const codecvt_wchar*, int*, const char*, const char*, const char**, wchar_t*, wchar_t*, wchar_t**), \
+            (const codecvt_wchar*, _Mbstatet*, const char*, const char*, const char**, wchar_t*, wchar_t*, wchar_t**), \
             (this, state, from, from_end, from_next, to, to_end, to_next))
 #endif
 DEFINE_THISCALL_WRAPPER(codecvt_wchar_do_in, 32)
-int __thiscall codecvt_wchar_do_in(const codecvt_wchar *this, int *state,
+int __thiscall codecvt_wchar_do_in(const codecvt_wchar *this, _Mbstatet *state,
         const char *from, const char *from_end, const char **from_next,
         wchar_t *to, wchar_t *to_end, wchar_t **to_next)
 {
@@ -3843,7 +3858,7 @@ int __thiscall codecvt_wchar_do_in(const codecvt_wchar *this, int *state,
 /* ?in@?$codecvt@_WDH@std@@QBEHAAHPBD1AAPBDPA_W3AAPA_W@Z */
 /* ?in@?$codecvt@_WDH@std@@QEBAHAEAHPEBD1AEAPEBDPEA_W3AEAPEA_W@Z */
 DEFINE_THISCALL_WRAPPER(codecvt_wchar_in, 32)
-int __thiscall codecvt_wchar_in(const codecvt_wchar *this, int *state,
+int __thiscall codecvt_wchar_in(const codecvt_wchar *this, _Mbstatet *state,
         const char *from, const char *from_end, const char **from_next,
         wchar_t *to, wchar_t *to_end, wchar_t **to_next)
 {
@@ -3860,16 +3875,16 @@ int __thiscall codecvt_wchar_in(const codecvt_wchar *this, int *state,
 #if _MSVCP_VER <= 100
 #define call_codecvt_wchar_do_out(this, state, from, from_end, from_next, to, to_end, to_next) \
     CALL_VTBL_FUNC(this, 20, int, \
-            (const codecvt_wchar*, int*, const wchar_t*, const wchar_t*, const wchar_t**, char*, char*, char**), \
+            (const codecvt_wchar*, _Mbstatet*, const wchar_t*, const wchar_t*, const wchar_t**, char*, char*, char**), \
             (this, state, from, from_end, from_next, to, to_end, to_next))
 #else
 #define call_codecvt_wchar_do_out(this, state, from, from_end, from_next, to, to_end, to_next) \
     CALL_VTBL_FUNC(this, 28, int, \
-            (const codecvt_wchar*, int*, const wchar_t*, const wchar_t*, const wchar_t**, char*, char*, char**), \
+            (const codecvt_wchar*, _Mbstatet*, const wchar_t*, const wchar_t*, const wchar_t**, char*, char*, char**), \
             (this, state, from, from_end, from_next, to, to_end, to_next))
 #endif
 DEFINE_THISCALL_WRAPPER(codecvt_wchar_do_out, 32)
-int __thiscall codecvt_wchar_do_out(const codecvt_wchar *this, int *state,
+int __thiscall codecvt_wchar_do_out(const codecvt_wchar *this, _Mbstatet *state,
         const wchar_t *from, const wchar_t *from_end, const wchar_t **from_next,
         char *to, char *to_end, char **to_next)
 {
@@ -3880,7 +3895,8 @@ int __thiscall codecvt_wchar_do_out(const codecvt_wchar *this, int *state,
     *to_next = to;
 
     while(*from_next!=from_end && *to_next!=to_end) {
-        int old_state = *state, size;
+        _Mbstatet old_state = *state;
+        int size;
         char buf[MB_LEN_MAX];
 
         switch((size = _Wcrtomb(buf, **from_next, state, &this->cvt))) {
@@ -3906,7 +3922,7 @@ int __thiscall codecvt_wchar_do_out(const codecvt_wchar *this, int *state,
 /* ?out@?$codecvt@_WDH@std@@QBEHAAHPB_W1AAPB_WPAD3AAPAD@Z */
 /* ?out@?$codecvt@_WDH@std@@QEBAHAEAHPEB_W1AEAPEB_WPEAD3AEAPEAD@Z */
 DEFINE_THISCALL_WRAPPER(codecvt_wchar_out, 32)
-int __thiscall codecvt_wchar_out(const codecvt_wchar *this, int *state,
+int __thiscall codecvt_wchar_out(const codecvt_wchar *this, _Mbstatet *state,
         const wchar_t *from, const wchar_t *from_end, const wchar_t **from_next,
         char *to, char *to_end, char **to_next)
 {
@@ -3922,18 +3938,18 @@ int __thiscall codecvt_wchar_out(const codecvt_wchar *this, int *state,
 /* ?do_unshift@?$codecvt@_WDH@std@@MEBAHAEAHPEAD1AEAPEAD@Z */
 #if _MSVCP_VER <= 100
 #define call_codecvt_wchar_do_unshift(this, state, to, to_end, to_next) CALL_VTBL_FUNC(this, 24, \
-        int, (const codecvt_wchar*, int*, char*, char*, char**), (this, state, to, to_end, to_next))
+        int, (const codecvt_wchar*, _Mbstatet*, char*, char*, char**), (this, state, to, to_end, to_next))
 #else
 #define call_codecvt_wchar_do_unshift(this, state, to, to_end, to_next) CALL_VTBL_FUNC(this, 32, \
-        int, (const codecvt_wchar*, int*, char*, char*, char**), (this, state, to, to_end, to_next))
+        int, (const codecvt_wchar*, _Mbstatet*, char*, char*, char**), (this, state, to, to_end, to_next))
 #endif
 DEFINE_THISCALL_WRAPPER(codecvt_wchar_do_unshift, 20)
 int __thiscall codecvt_wchar_do_unshift(const codecvt_wchar *this,
-        int *state, char *to, char *to_end, char **to_next)
+        _Mbstatet *state, char *to, char *to_end, char **to_next)
 {
     TRACE("(%p %p %p %p %p)\n", this, state, to, to_end, to_next);
-    if(*state)
-        WARN("unexpected state: %x\n", *state);
+    if(MBSTATET_TO_INT(state))
+        WARN("unexpected state: %x\n", MBSTATET_TO_INT(state));
 
     *to_next = to;
     return CODECVT_ok;
@@ -3945,7 +3961,7 @@ int __thiscall codecvt_wchar_do_unshift(const codecvt_wchar *this,
 /* ?unshift@?$codecvt@_WDH@std@@QEBAHAEAHPEAD1AEAPEAD@Z */
 DEFINE_THISCALL_WRAPPER(codecvt_wchar_unshift, 20)
 int __thiscall codecvt_wchar_unshift(const codecvt_wchar *this,
-        int *state, char *to, char *to_end, char **to_next)
+        _Mbstatet *state, char *to, char *to_end, char **to_next)
 {
     TRACE("(%p %p %p %p %p)\n", this, state, to, to_end, to_next);
     return call_codecvt_wchar_do_unshift(this, state, to, to_end, to_next);
@@ -3957,18 +3973,19 @@ int __thiscall codecvt_wchar_unshift(const codecvt_wchar *this,
 /* ?do_length@?$codecvt@_WDH@std@@MEBAHAEBHPEBD1_K@Z */
 #if _MSVCP_VER <= 100
 #define call_codecvt_wchar_do_length(this, state, from, from_end, max) CALL_VTBL_FUNC(this, 28, \
-        int, (const codecvt_wchar*, const int*, const char*, const char*, MSVCP_size_t), \
+        int, (const codecvt_wchar*, const _Mbstatet*, const char*, const char*, MSVCP_size_t), \
         (this, state, from, from_end, max))
 #else
 #define call_codecvt_wchar_do_length(this, state, from, from_end, max) CALL_VTBL_FUNC(this, 36, \
-        int, (const codecvt_wchar*, const int*, const char*, const char*, MSVCP_size_t), \
+        int, (const codecvt_wchar*, const _Mbstatet*, const char*, const char*, MSVCP_size_t), \
         (this, state, from, from_end, max))
 #endif
 DEFINE_THISCALL_WRAPPER(codecvt_wchar_do_length, 20)
-int __thiscall codecvt_wchar_do_length(const codecvt_wchar *this, const int *state,
+int __thiscall codecvt_wchar_do_length(const codecvt_wchar *this, const _Mbstatet *state,
         const char *from, const char *from_end, MSVCP_size_t max)
 {
-    int tmp_state = *state, ret=0;
+    _Mbstatet tmp_state = *state;
+    int ret=0;
 
     TRACE("(%p %p %p %p %ld)\n", this, state, from, from_end, max);
 
@@ -3995,7 +4012,7 @@ int __thiscall codecvt_wchar_do_length(const codecvt_wchar *this, const int *sta
 /* ?length@?$codecvt@_WDH@std@@QBEHABHPBD1I@Z */
 /* ?length@?$codecvt@_WDH@std@@QEBAHAEBHPEBD1_K@Z */
 DEFINE_THISCALL_WRAPPER(codecvt_wchar_length, 20)
-int __thiscall codecvt_wchar_length(const codecvt_wchar *this, const int *state,
+int __thiscall codecvt_wchar_length(const codecvt_wchar *this, const _Mbstatet *state,
         const char *from, const char *from_end, MSVCP_size_t max)
 {
     TRACE("(%p %p %p %p %ld)\n", this, state, from, from_end, max);
@@ -4909,7 +4926,9 @@ DEFINE_THISCALL_WRAPPER(num_get_wchar__Init, 8)
 void __thiscall num_get_wchar__Init(num_get *this, const _Locinfo *locinfo)
 {
     TRACE("(%p %p)\n", this, locinfo);
+#if _MSVCP_VER <= 100
     _Locinfo__Getcvt(locinfo, &this->cvt);
+#endif
 }
 
 /* ??0?$num_get@_WV?$istreambuf_iterator@_WU?$char_traits@_W@std@@@std@@@std@@QAE@ABV_Locinfo@1@I@Z */
@@ -5128,11 +5147,18 @@ static int num_get__Getffld(const num_get *this, char *dest, istreambuf_iterator
     wchar_t sep = 0, digits[11], *digits_pos;
     const char *grouping, *groups;
     BOOL error = FALSE, got_digit = FALSE, got_nonzero = FALSE;
+    const _Cvtvec *cvt;
 
     TRACE("(%p %p %p %p)\n", dest, first, last, loc);
 
+#if _MSVCP_VER <= 100
+    cvt = &this->cvt;
+#else
+    cvt = &ctype_wchar_use_facet(loc)->cvt;
+#endif
+
     for(i=0; i<10; i++)
-        digits[i] = mb_to_wc('0'+i, &this->cvt);
+        digits[i] = mb_to_wc('0'+i, cvt);
     digits[10] = 0;
 
     numpunct_wchar_grouping(numpunct, &grouping_bstr);
@@ -5146,10 +5172,10 @@ static int num_get__Getffld(const num_get *this, char *dest, istreambuf_iterator
 
     istreambuf_iterator_wchar_val(first);
     /* get sign */
-    if(first->strbuf && first->val==mb_to_wc('-', &this->cvt)) {
+    if(first->strbuf && first->val==mb_to_wc('-', cvt)) {
         *dest++ = '-';
         istreambuf_iterator_wchar_inc(first);
-    }else if(first->strbuf && first->val==mb_to_wc('+', &this->cvt)) {
+    }else if(first->strbuf && first->val==mb_to_wc('+', cvt)) {
         *dest++ = '+';
         istreambuf_iterator_wchar_inc(first);
     }
@@ -5205,14 +5231,14 @@ static int num_get__Getffld(const num_get *this, char *dest, istreambuf_iterator
     }
 
     /* read exponent, if any */
-    if(first->strbuf && (first->val==mb_to_wc('e', &this->cvt) || first->val==mb_to_wc('E', &this->cvt))) {
+    if(first->strbuf && (first->val==mb_to_wc('e', cvt) || first->val==mb_to_wc('E', cvt))) {
         *dest++ = 'e';
         istreambuf_iterator_wchar_inc(first);
 
-        if(first->strbuf && first->val==mb_to_wc('-', &this->cvt)) {
+        if(first->strbuf && first->val==mb_to_wc('-', cvt)) {
             *dest++ = '-';
             istreambuf_iterator_wchar_inc(first);
-        }else if(first->strbuf && first->val==mb_to_wc('+', &this->cvt)) {
+        }else if(first->strbuf && first->val==mb_to_wc('+', cvt)) {
             *dest++ = '+';
             istreambuf_iterator_wchar_inc(first);
         }
@@ -5309,14 +5335,21 @@ static int num_get__Getifld(const num_get *this, char *dest, istreambuf_iterator
     char *dest_beg = dest, *dest_end = dest+24;
     const char *grouping, *groups;
     BOOL error = TRUE, dest_empty = TRUE, found_zero = FALSE;
+    const _Cvtvec *cvt;
 
     TRACE("(%p %p %p %04x %p)\n", dest, first, last, fmtflags, loc);
 
+#if _MSVCP_VER <= 100
+    cvt = &this->cvt;
+#else
+    cvt = &ctype_wchar_use_facet(loc)->cvt;
+#endif
+
     for(i=0; i<10; i++)
-        digits[i] = mb_to_wc('0'+i, &this->cvt);
+        digits[i] = mb_to_wc('0'+i, cvt);
     for(i=0; i<6; i++) {
-        digits[10+i] = mb_to_wc('a'+i, &this->cvt);
-        digits[16+i] = mb_to_wc('A'+i, &this->cvt);
+        digits[10+i] = mb_to_wc('a'+i, cvt);
+        digits[16+i] = mb_to_wc('A'+i, cvt);
     }
 
     numpunct_wchar_grouping(numpunct, &grouping_bstr);
@@ -5336,10 +5369,10 @@ static int num_get__Getifld(const num_get *this, char *dest, istreambuf_iterator
         base = 10;
 
     istreambuf_iterator_wchar_val(first);
-    if(first->strbuf && first->val==mb_to_wc('-', &this->cvt)) {
+    if(first->strbuf && first->val==mb_to_wc('-', cvt)) {
         *dest++ = '-';
         istreambuf_iterator_wchar_inc(first);
-    }else if(first->strbuf && first->val==mb_to_wc('+', &this->cvt)) {
+    }else if(first->strbuf && first->val==mb_to_wc('+', cvt)) {
         *dest++ = '+';
         istreambuf_iterator_wchar_inc(first);
     }
@@ -5347,7 +5380,7 @@ static int num_get__Getifld(const num_get *this, char *dest, istreambuf_iterator
     if(first->strbuf && first->val==digits[0]) {
         found_zero = TRUE;
         istreambuf_iterator_wchar_inc(first);
-        if(first->strbuf && (first->val==mb_to_wc('x', &this->cvt) || first->val==mb_to_wc('X', &this->cvt))) {
+        if(first->strbuf && (first->val==mb_to_wc('x', cvt) || first->val==mb_to_wc('X', cvt))) {
             if(!base || base == 22) {
                 found_zero = FALSE;
                 istreambuf_iterator_wchar_inc(first);
@@ -6174,7 +6207,9 @@ DEFINE_THISCALL_WRAPPER(num_get_char__Init, 8)
 void __thiscall num_get_char__Init(num_get *this, const _Locinfo *locinfo)
 {
     TRACE("(%p %p)\n", this, locinfo);
+#if _MSVCP_VER <= 100
     _Locinfo__Getcvt(locinfo, &this->cvt);
+#endif
 }
 
 /* ??0?$num_get@DV?$istreambuf_iterator@DU?$char_traits@D@std@@@std@@@std@@QAE@ABV_Locinfo@1@I@Z */
@@ -8116,11 +8151,12 @@ ostreambuf_iterator_wchar* __cdecl num_put_wchar__Put(const num_put *this, ostre
 ostreambuf_iterator_wchar* __cdecl num_put_wchar__Putc(const num_put *this, ostreambuf_iterator_wchar *ret,
         ostreambuf_iterator_wchar dest, const char *ptr, MSVCP_size_t count)
 {
-    int state = 0;
+    _Mbstatet state;
     wchar_t ch;
 
     TRACE("(%p %p %s %ld)\n", this, ret, debugstr_an(ptr, count), count);
 
+    memset(&state, 0, sizeof(state));
     for(; count>0; count--) {
         if(_Mbrtowc(&ch, ptr++, 1, &state, &this->cvt) == 1)
             ostreambuf_iterator_wchar_put(&dest, ch);
@@ -8957,7 +8993,9 @@ void __thiscall time_put_char__Init(time_put *this, const _Locinfo *locinfo)
 {
     TRACE("(%p %p)\n", this, locinfo);
     _Locinfo__Gettnames(locinfo, &this->time);
+#if _MSVCP_VER <= 100
     _Locinfo__Getcvt(locinfo, &this->cvt);
+#endif
 }
 
 /* ??0?$time_put@DV?$ostreambuf_iterator@DU?$char_traits@D@std@@@std@@@std@@QAE@ABV_Locinfo@1@I@Z */
@@ -9270,7 +9308,9 @@ void __thiscall time_put_wchar__Init(time_put *this, const _Locinfo *locinfo)
 {
     TRACE("(%p %p)\n", this, locinfo);
     _Locinfo__Gettnames(locinfo, &this->time);
+#if _MSVCP_VER <= 100
     _Locinfo__Getcvt(locinfo, &this->cvt);
+#endif
 }
 
 /* ??0?$time_put@_WV?$ostreambuf_iterator@_WU?$char_traits@_W@std@@@std@@@std@@QAE@ABV_Locinfo@1@I@Z */
@@ -9530,6 +9570,7 @@ ostreambuf_iterator_wchar* __thiscall time_put_wchar_do_put(const time_put *this
 {
     char buf[64], fmt[4], *p = fmt;
     MSVCP_size_t i, len;
+    const _Cvtvec *cvt;
     wchar_t c;
 
     TRACE("(%p %p %p %c %p %c %c)\n", this, ret, base, fill, t, spec, mod);
@@ -9540,9 +9581,15 @@ ostreambuf_iterator_wchar* __thiscall time_put_wchar_do_put(const time_put *this
     *p++ = spec;
     *p++ = 0;
 
+#if _MSVCP_VER <= 100
+    cvt = &this->cvt;
+#else
+    cvt = &ctype_wchar_use_facet(base->loc)->cvt;
+#endif
+
     len = _Strftime(buf, sizeof(buf), fmt, t, this->time.timeptr);
     for(i=0; i<len; i++) {
-        c = mb_to_wc(buf[i], &this->cvt);
+        c = mb_to_wc(buf[i], cvt);
         ostreambuf_iterator_wchar_put(&dest, c);
     }
 
@@ -9580,23 +9627,31 @@ ostreambuf_iterator_wchar* __thiscall time_put_wchar_put_format(const time_put *
         ostreambuf_iterator_wchar *ret, ostreambuf_iterator_wchar dest, ios_base *base,
         wchar_t fill, const struct tm *t, const wchar_t *pat, const wchar_t *pat_end)
 {
-    wchar_t percent = mb_to_wc('%', &this->cvt);
+    wchar_t percent;
     char c[MB_LEN_MAX];
+    const _Cvtvec *cvt;
 
     TRACE("(%p %p %p %c %p %s)\n", this, ret, base, fill, t, debugstr_wn(pat, pat_end-pat));
 
+#if _MSVCP_VER <= 100
+    cvt = &this->cvt;
+#else
+    cvt = &ctype_wchar_use_facet(base->loc)->cvt;
+#endif
+
+    percent = mb_to_wc('%', cvt);
     while(pat < pat_end) {
         if(*pat != percent) {
             ostreambuf_iterator_wchar_put(&dest, *pat++);
         }else if(++pat == pat_end) {
             ostreambuf_iterator_wchar_put(&dest, percent);
-        }else if(_Wcrtomb(c, *pat, NULL, &this->cvt)!=1 || (*c=='#' && pat+1==pat_end)) {
+        }else if(_Wcrtomb(c, *pat, NULL, cvt)!=1 || (*c=='#' && pat+1==pat_end)) {
             ostreambuf_iterator_wchar_put(&dest, percent);
             ostreambuf_iterator_wchar_put(&dest, *pat++);
         }else {
             pat++;
             if(*c == '#') {
-                if(_Wcrtomb(c, *pat++, NULL, &this->cvt) != 1) {
+                if(_Wcrtomb(c, *pat++, NULL, cvt) != 1) {
                     ostreambuf_iterator_wchar_put(&dest, percent);
                     ostreambuf_iterator_wchar_put(&dest, *(pat-2));
                     ostreambuf_iterator_wchar_put(&dest, *(pat-1));
@@ -11077,6 +11132,7 @@ wint_t __cdecl towctrans(wint_t c, wctrans_t category)
     return towlower(c);
 }
 
+#if _MSVCP_VER <= 71
 /* btowc */
 wint_t __cdecl btowc(int c)
 {
@@ -11166,6 +11222,7 @@ size_t __cdecl wcsrtombs(char *dst, const wchar_t **pstr, size_t n, mbstate_t *s
     }
     return ret;
 }
+#endif
 
 
 DEFINE_RTTI_DATA0(locale_facet, 0, ".?AVfacet@locale@std@@")
@@ -11178,9 +11235,15 @@ DEFINE_RTTI_DATA2(ctype_char, 0, &ctype_base_rtti_base_descriptor, &locale_facet
 DEFINE_RTTI_DATA2(ctype_wchar, 0, &ctype_base_rtti_base_descriptor, &locale_facet_rtti_base_descriptor, ".?AV?$ctype@_W@std@@")
 DEFINE_RTTI_DATA2(ctype_short, 0, &ctype_base_rtti_base_descriptor, &locale_facet_rtti_base_descriptor, ".?AV?$ctype@G@std@@")
 DEFINE_RTTI_DATA1(codecvt_base, 0, &locale_facet_rtti_base_descriptor, ".?AVcodecvt_base@std@@")
+#if _MSVCP_VER >= 140
+DEFINE_RTTI_DATA2(codecvt_char, 0, &codecvt_base_rtti_base_descriptor, &locale_facet_rtti_base_descriptor, ".?AV?$codecvt@DDU_Mbstatet@@@std@@")
+DEFINE_RTTI_DATA2(codecvt_wchar, 0, &codecvt_base_rtti_base_descriptor, &locale_facet_rtti_base_descriptor, ".?AV?$codecvt@_WDU_Mbstatet@@@std@@")
+DEFINE_RTTI_DATA2(codecvt_short, 0, &codecvt_base_rtti_base_descriptor, &locale_facet_rtti_base_descriptor, ".?AV?$codecvt@GDU_Mbstatet@@@std@@")
+#else
 DEFINE_RTTI_DATA2(codecvt_char, 0, &codecvt_base_rtti_base_descriptor, &locale_facet_rtti_base_descriptor, ".?AV?$codecvt@DDH@std@@")
 DEFINE_RTTI_DATA2(codecvt_wchar, 0, &codecvt_base_rtti_base_descriptor, &locale_facet_rtti_base_descriptor, ".?AV?$codecvt@_WDH@std@@")
 DEFINE_RTTI_DATA2(codecvt_short, 0, &codecvt_base_rtti_base_descriptor, &locale_facet_rtti_base_descriptor, ".?AV?$codecvt@GDH@std@@")
+#endif
 DEFINE_RTTI_DATA1(numpunct_char, 0, &locale_facet_rtti_base_descriptor, ".?AV?$numpunct@D@std@@")
 DEFINE_RTTI_DATA1(numpunct_wchar, 0, &locale_facet_rtti_base_descriptor, ".?AV?$numpunct@_W@std@@")
 DEFINE_RTTI_DATA1(numpunct_short, 0, &locale_facet_rtti_base_descriptor, ".?AV?$numpunct@G@std@@")
@@ -11335,8 +11398,10 @@ void __asm_dummy_vtables(void) {
 #if _MSVCP_VER >= 110
             VTABLE_ADD_FUNC(locale_facet__Incref)
             VTABLE_ADD_FUNC(locale_facet__Decref)
-#endif
+            VTABLE_ADD_FUNC(codecvt_char_do_always_noconv)
+#else
             VTABLE_ADD_FUNC(codecvt_base_do_always_noconv)
+#endif
             VTABLE_ADD_FUNC(codecvt_base_do_max_length)
             VTABLE_ADD_FUNC(codecvt_base_do_encoding)
             VTABLE_ADD_FUNC(codecvt_char_do_in)

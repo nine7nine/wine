@@ -36,6 +36,8 @@
 #endif
 #include <string.h>
 
+#include "ntstatus.h"
+#define WIN32_NO_STATUS
 #include "windef.h"
 #include "winbase.h"
 #include "wingdi.h"
@@ -44,40 +46,325 @@
 #include "user_private.h"
 #include "win.h"
 
-#include "wine/debug.h"
+#include "wine/list.h"
 #include "wine/unicode.h"
 #include "wine/server.h"
+#include "wine/debug.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(clipboard);
 
-/*
- * Indicates if data has changed since open.
- */
-static BOOL bCBHasChanged = FALSE;
 
-
-/* formats that can be synthesized are: CF_TEXT, CF_OEMTEXT, CF_UNICODETEXT,
-   CF_BITMAP, CF_DIB, CF_DIBV5, CF_ENHMETAFILE, CF_METAFILEPICT */
-
-static UINT synthesized_formats[CF_MAX];
-
-/* add a synthesized format to the list */
-static void add_synthesized_format( UINT format, UINT from )
+struct cached_format
 {
-    assert( format < CF_MAX );
-    SetClipboardData( format, 0 );
-    synthesized_formats[format] = from;
+    struct list entry;       /* entry in cache list */
+    UINT        format;      /* format id */
+    UINT        seqno;       /* sequence number when the data was set */
+    HANDLE      handle;      /* original data handle */
+};
+
+static struct list cached_formats = LIST_INIT( cached_formats );
+static struct list formats_to_free = LIST_INIT( formats_to_free );
+
+static CRITICAL_SECTION clipboard_cs;
+static CRITICAL_SECTION_DEBUG critsect_debug =
+{
+    0, 0, &clipboard_cs,
+    { &critsect_debug.ProcessLocksList, &critsect_debug.ProcessLocksList },
+      0, 0, { (DWORD_PTR)(__FILE__ ": clipboard_cs") }
+};
+static CRITICAL_SECTION clipboard_cs = { &critsect_debug, -1, 0, 0, 0, 0 };
+
+/* platform-independent version of METAFILEPICT */
+struct metafile_pict
+{
+    LONG       mm;
+    LONG       xExt;
+    LONG       yExt;
+    BYTE       bits[1];
+};
+
+/* get a debug string for a format id */
+static const char *debugstr_format( UINT id )
+{
+    WCHAR buffer[256];
+
+    if (GetClipboardFormatNameW( id, buffer, 256 ))
+        return wine_dbg_sprintf( "%04x %s", id, debugstr_w(buffer) );
+
+    switch (id)
+    {
+#define BUILTIN(id) case id: return #id;
+    BUILTIN(CF_TEXT)
+    BUILTIN(CF_BITMAP)
+    BUILTIN(CF_METAFILEPICT)
+    BUILTIN(CF_SYLK)
+    BUILTIN(CF_DIF)
+    BUILTIN(CF_TIFF)
+    BUILTIN(CF_OEMTEXT)
+    BUILTIN(CF_DIB)
+    BUILTIN(CF_PALETTE)
+    BUILTIN(CF_PENDATA)
+    BUILTIN(CF_RIFF)
+    BUILTIN(CF_WAVE)
+    BUILTIN(CF_UNICODETEXT)
+    BUILTIN(CF_ENHMETAFILE)
+    BUILTIN(CF_HDROP)
+    BUILTIN(CF_LOCALE)
+    BUILTIN(CF_DIBV5)
+    BUILTIN(CF_OWNERDISPLAY)
+    BUILTIN(CF_DSPTEXT)
+    BUILTIN(CF_DSPBITMAP)
+    BUILTIN(CF_DSPMETAFILEPICT)
+    BUILTIN(CF_DSPENHMETAFILE)
+#undef BUILTIN
+    default: return wine_dbg_sprintf( "%04x", id );
+    }
 }
 
-/* store the current locale in the CF_LOCALE format */
-static void set_clipboard_locale(void)
+/* build the data to send to the server in SetClipboardData */
+static HANDLE marshal_data( UINT format, HANDLE handle, data_size_t *ret_size )
 {
-    HANDLE data = GlobalAlloc( GMEM_FIXED, sizeof(LCID) );
+    SIZE_T size;
 
-    if (!data) return;
-    *(LCID *)data = GetUserDefaultLCID();
-    SetClipboardData( CF_LOCALE, data );
-    TRACE( "added CF_LOCALE\n" );
+    switch (format)
+    {
+    case CF_BITMAP:
+    case CF_DSPBITMAP:
+        {
+            BITMAP bitmap, *bm;
+            if (!GetObjectW( handle, sizeof(bitmap), &bitmap )) return 0;
+            size = abs( bitmap.bmHeight ) * ((((bitmap.bmWidth * bitmap.bmBitsPixel) + 15) >> 3) & ~1);
+            *ret_size = sizeof(bitmap) + size;
+            if (!(bm = GlobalAlloc( GMEM_FIXED, *ret_size ))) return 0;
+            *bm = bitmap;
+            GetBitmapBits( handle, size, bm + 1 );
+            return bm;
+        }
+    case CF_PALETTE:
+        {
+            LOGPALETTE *pal;
+            if (!(size = GetPaletteEntries( handle, 0, 0, NULL ))) return 0;
+            *ret_size = offsetof( LOGPALETTE, palPalEntry[size] );
+            if (!(pal = GlobalAlloc( GMEM_FIXED, *ret_size ))) return 0;
+            pal->palVersion = 0x300;
+            pal->palNumEntries = size;
+            GetPaletteEntries( handle, 0, size, pal->palPalEntry );
+            return pal;
+        }
+    case CF_ENHMETAFILE:
+    case CF_DSPENHMETAFILE:
+        {
+            BYTE *ret;
+            if (!(size = GetEnhMetaFileBits( handle, 0, NULL ))) return 0;
+            if (!(ret = GlobalAlloc( GMEM_FIXED, size ))) return 0;
+            GetEnhMetaFileBits( handle, size, ret );
+            *ret_size = size;
+            return ret;
+        }
+    case CF_METAFILEPICT:
+    case CF_DSPMETAFILEPICT:
+        {
+            METAFILEPICT *mf;
+            struct metafile_pict *mfbits;
+            if (!(mf = GlobalLock( handle ))) return 0;
+            if (!(size = GetMetaFileBitsEx( mf->hMF, 0, NULL )))
+            {
+                GlobalUnlock( handle );
+                return 0;
+            }
+            *ret_size = offsetof( struct metafile_pict, bits[size] );
+            if (!(mfbits = GlobalAlloc( GMEM_FIXED, *ret_size )))
+            {
+                GlobalUnlock( handle );
+                return 0;
+            }
+            mfbits->mm   = mf->mm;
+            mfbits->xExt = mf->xExt;
+            mfbits->yExt = mf->yExt;
+            GetMetaFileBitsEx( mf->hMF, size, mfbits->bits );
+            GlobalUnlock( handle );
+            return mfbits;
+        }
+    case CF_UNICODETEXT:
+        {
+            WCHAR *ptr;
+            if (!(size = GlobalSize( handle ))) return 0;
+            if ((data_size_t)size != size) return 0;
+            if (!(ptr = GlobalLock( handle ))) return 0;
+            ptr[(size + 1) / sizeof(WCHAR) - 1] = 0;  /* enforce null-termination */
+            GlobalUnlock( handle );
+            *ret_size = size;
+            return handle;
+        }
+    case CF_TEXT:
+    case CF_OEMTEXT:
+        {
+            char *ptr;
+            if (!(size = GlobalSize( handle ))) return 0;
+            if ((data_size_t)size != size) return 0;
+            if (!(ptr = GlobalLock( handle ))) return 0;
+            ptr[size - 1] = 0;  /* enforce null-termination */
+            GlobalUnlock( handle );
+            *ret_size = size;
+            return handle;
+        }
+    default:
+        if (!(size = GlobalSize( handle ))) return 0;
+        if ((data_size_t)size != size) return 0;
+        *ret_size = size;
+        return handle;
+    }
+}
+
+/* rebuild the target handle from the data received in GetClipboardData */
+static HANDLE unmarshal_data( UINT format, void *data, data_size_t size )
+{
+    HANDLE handle = GlobalReAlloc( data, size, 0 );  /* release unused space */
+
+    switch (format)
+    {
+    case CF_BITMAP:
+        {
+            BITMAP *bm = handle;
+            if (size < sizeof(*bm)) break;
+            if (size < bm->bmWidthBytes * abs( bm->bmHeight )) break;
+            if (bm->bmBits) break;  /* DIB sections are not supported across processes */
+            bm->bmBits = bm + 1;
+            return CreateBitmapIndirect( bm );
+        }
+    case CF_DSPBITMAP:  /* not supported across processes */
+        break;
+    case CF_PALETTE:
+        {
+            LOGPALETTE *pal = handle;
+            if (size < sizeof(*pal)) break;
+            if (size < offsetof( LOGPALETTE, palPalEntry[pal->palNumEntries] )) break;
+            return CreatePalette( pal );
+        }
+    case CF_ENHMETAFILE:
+    case CF_DSPENHMETAFILE:
+        return SetEnhMetaFileBits( size, handle );
+    case CF_METAFILEPICT:
+    case CF_DSPMETAFILEPICT:
+        {
+            METAFILEPICT mf;
+            struct metafile_pict *mfbits = handle;
+            if (size <= sizeof(*mfbits)) break;
+            mf.mm   = mfbits->mm;
+            mf.xExt = mfbits->xExt;
+            mf.yExt = mfbits->yExt;
+            mf.hMF  = SetMetaFileBitsEx( size - offsetof( struct metafile_pict, bits ), mfbits->bits );
+            *(METAFILEPICT *)handle = mf;
+            return handle;
+        }
+    }
+    return handle;
+}
+
+/* retrieve a data format from the cache */
+static struct cached_format *get_cached_format( UINT format )
+{
+    struct cached_format *cache;
+
+    LIST_FOR_EACH_ENTRY( cache, &cached_formats, struct cached_format, entry )
+        if (cache->format == format) return cache;
+    return NULL;
+}
+
+/* store data in the cache, or reuse the existing one if available */
+static HANDLE cache_data( UINT format, HANDLE data, data_size_t size, UINT seqno,
+                          struct cached_format *cache )
+{
+    if (cache)
+    {
+        if (seqno == cache->seqno)  /* we can reuse the cached data */
+        {
+            GlobalFree( data );
+            return cache->handle;
+        }
+        /* cache entry is stale, remove it */
+        list_remove( &cache->entry );
+        list_add_tail( &formats_to_free, &cache->entry );
+    }
+
+    /* allocate new cache entry */
+    if (!(cache = HeapAlloc( GetProcessHeap(), 0, sizeof(*cache) )))
+    {
+        GlobalFree( data );
+        return 0;
+    }
+    cache->format = format;
+    cache->seqno  = seqno;
+    cache->handle = unmarshal_data( format, data, size );
+    list_add_tail( &cached_formats, &cache->entry );
+    return cache->handle;
+}
+
+/* free a single cached format */
+static void free_cached_data( struct cached_format *cache )
+{
+    void *ptr;
+
+    switch (cache->format)
+    {
+    case CF_BITMAP:
+    case CF_DSPBITMAP:
+    case CF_PALETTE:
+        DeleteObject( cache->handle );
+        break;
+    case CF_ENHMETAFILE:
+    case CF_DSPENHMETAFILE:
+        DeleteEnhMetaFile( cache->handle );
+        break;
+    case CF_METAFILEPICT:
+    case CF_DSPMETAFILEPICT:
+        if ((ptr = GlobalLock( cache->handle )))
+        {
+            DeleteMetaFile( ((METAFILEPICT *)ptr)->hMF );
+            GlobalUnlock( cache->handle );
+        }
+        GlobalFree( cache->handle );
+        break;
+    default:
+        GlobalFree( cache->handle );
+        break;
+    }
+    list_remove( &cache->entry );
+    HeapFree( GetProcessHeap(), 0, cache );
+}
+
+/* clear global memory formats; special types are freed on EmptyClipboard */
+static void invalidate_memory_formats(void)
+{
+    struct cached_format *cache, *next;
+
+    LIST_FOR_EACH_ENTRY_SAFE( cache, next, &cached_formats, struct cached_format, entry )
+    {
+        switch (cache->format)
+        {
+        case CF_BITMAP:
+        case CF_DSPBITMAP:
+        case CF_PALETTE:
+        case CF_ENHMETAFILE:
+        case CF_DSPENHMETAFILE:
+        case CF_METAFILEPICT:
+        case CF_DSPMETAFILEPICT:
+            continue;
+        default:
+            free_cached_data( cache );
+            break;
+        }
+    }
+}
+
+/* free all the data in the cache */
+static void free_cached_formats(void)
+{
+    struct list *ptr;
+
+    list_move_tail( &formats_to_free, &cached_formats );
+    while ((ptr = list_head( &formats_to_free )))
+        free_cached_data( LIST_ENTRY( ptr, struct cached_format, entry ));
 }
 
 /* get the clipboard locale stored in the CF_LOCALE format */
@@ -109,71 +396,6 @@ static UINT get_format_codepage( LCID lcid, UINT format )
     return ret;
 }
 
-/* add synthesized text formats based on what is already in the clipboard */
-static void add_synthesized_text(void)
-{
-    BOOL has_text = IsClipboardFormatAvailable( CF_TEXT );
-    BOOL has_oemtext = IsClipboardFormatAvailable( CF_OEMTEXT );
-    BOOL has_unicode = IsClipboardFormatAvailable( CF_UNICODETEXT );
-
-    if (!has_text && !has_oemtext && !has_unicode) return;  /* no text, nothing to do */
-
-    if (!IsClipboardFormatAvailable( CF_LOCALE )) set_clipboard_locale();
-
-    if (has_unicode)
-    {
-        if (!has_text) add_synthesized_format( CF_TEXT, CF_UNICODETEXT );
-        if (!has_oemtext) add_synthesized_format( CF_OEMTEXT, CF_UNICODETEXT );
-    }
-    else if (has_text)
-    {
-        if (!has_oemtext) add_synthesized_format( CF_OEMTEXT, CF_TEXT );
-        if (!has_unicode) add_synthesized_format( CF_UNICODETEXT, CF_TEXT );
-    }
-    else
-    {
-        if (!has_text) add_synthesized_format( CF_TEXT, CF_OEMTEXT );
-        if (!has_unicode) add_synthesized_format( CF_UNICODETEXT, CF_OEMTEXT );
-    }
-}
-
-/* add synthesized bitmap formats based on what is already in the clipboard */
-static void add_synthesized_bitmap(void)
-{
-    BOOL has_dib = IsClipboardFormatAvailable( CF_DIB );
-    BOOL has_dibv5 = IsClipboardFormatAvailable( CF_DIBV5 );
-    BOOL has_bitmap = IsClipboardFormatAvailable( CF_BITMAP );
-
-    if (!has_bitmap && !has_dib && !has_dibv5) return;  /* nothing to do */
-    if (has_bitmap && has_dib && has_dibv5) return;  /* nothing to synthesize */
-
-    if (has_bitmap)
-    {
-        if (!has_dib) add_synthesized_format( CF_DIB, CF_BITMAP );
-        if (!has_dibv5) add_synthesized_format( CF_DIBV5, CF_BITMAP );
-    }
-    else if (has_dib)
-    {
-        if (!has_bitmap) add_synthesized_format( CF_BITMAP, CF_DIB );
-        if (!has_dibv5) add_synthesized_format( CF_DIBV5, CF_DIB );
-    }
-    else
-    {
-        if (!has_bitmap) add_synthesized_format( CF_BITMAP, CF_DIBV5 );
-        if (!has_dib) add_synthesized_format( CF_DIB, CF_DIBV5 );
-    }
-}
-
-/* add synthesized metafile formats based on what is already in the clipboard */
-static void add_synthesized_metafile(void)
-{
-    BOOL has_mf = IsClipboardFormatAvailable( CF_METAFILEPICT );
-    BOOL has_emf = IsClipboardFormatAvailable( CF_ENHMETAFILE );
-
-    if (!has_mf && has_emf) add_synthesized_format( CF_METAFILEPICT, CF_ENHMETAFILE );
-    else if (!has_emf && has_mf) add_synthesized_format( CF_ENHMETAFILE, CF_METAFILEPICT );
-}
-
 /* render synthesized ANSI text based on the contents of the 'from' format */
 static HANDLE render_synthesized_textA( HANDLE data, UINT format, UINT from )
 {
@@ -196,9 +418,11 @@ static HANDLE render_synthesized_textA( HANDLE data, UINT format, UINT from )
         size = len * sizeof(WCHAR);
     }
 
-    len = WideCharToMultiByte( codepage, 0, src, size / sizeof(WCHAR), NULL, 0, NULL, NULL );
-    if ((ret = GlobalAlloc( GMEM_FIXED, len )))
-        WideCharToMultiByte( codepage, 0, src, size / sizeof(WCHAR), ret, len, NULL, NULL );
+    if ((len = WideCharToMultiByte( codepage, 0, src, size / sizeof(WCHAR), NULL, 0, NULL, NULL )))
+    {
+        if ((ret = GlobalAlloc( GMEM_FIXED, len )))
+            WideCharToMultiByte( codepage, 0, src, size / sizeof(WCHAR), ret, len, NULL, NULL );
+    }
 
 done:
     HeapFree( GetProcessHeap(), 0, srcW );
@@ -210,16 +434,17 @@ done:
 static HANDLE render_synthesized_textW( HANDLE data, UINT from )
 {
     char *src;
-    HANDLE ret;
+    HANDLE ret = 0;
     UINT len, size = GlobalSize( data );
     UINT codepage = get_format_codepage( get_clipboard_locale(), from );
 
     if (!(src = GlobalLock( data ))) return 0;
 
-    len = MultiByteToWideChar( codepage, 0, src, size, NULL, 0 );
-    if ((ret = GlobalAlloc( GMEM_FIXED, len * sizeof(WCHAR) )))
-        MultiByteToWideChar( codepage, 0, src, size, ret, len );
-
+    if ((len = MultiByteToWideChar( codepage, 0, src, size, NULL, 0 )))
+    {
+        if ((ret = GlobalAlloc( GMEM_FIXED, len * sizeof(WCHAR) )))
+            MultiByteToWideChar( codepage, 0, src, size, ret, len );
+    }
     GlobalUnlock( data );
     return ret;
 }
@@ -253,33 +478,33 @@ static HANDLE render_synthesized_dib( HANDLE data, UINT format, UINT from )
 
     if (from == CF_BITMAP)
     {
-        BITMAP bmp;
+        BITMAPV5HEADER header;
 
-        if (!GetObjectW( data, sizeof(bmp), &bmp )) goto done;
+        memset( &header, 0, sizeof(header) );
+        header.bV5Size = (format == CF_DIBV5) ? sizeof(BITMAPV5HEADER) : sizeof(BITMAPINFOHEADER);
+        if (!GetDIBits( hdc, data, 0, 0, NULL, (BITMAPINFO *)&header, DIB_RGB_COLORS )) goto done;
 
-        bits_size = abs( bmp.bmHeight ) * (((bmp.bmWidth * bmp.bmBitsPixel + 31) / 8) & ~3);
-        if (bmp.bmBitsPixel <= 8)
-            header_size = offsetof( BITMAPINFO, bmiColors[1 << bmp.bmBitsPixel] );
-        else
-            header_size = (format == CF_DIBV5) ? sizeof(BITMAPV5HEADER) : sizeof(BITMAPINFOHEADER);
-
-        if (!(ret = GlobalAlloc( GMEM_FIXED, header_size + bits_size ))) goto done;
+        header_size = bitmap_info_size( (BITMAPINFO *)&header, DIB_RGB_COLORS );
+        if (!(ret = GlobalAlloc( GMEM_FIXED, header_size + header.bV5SizeImage ))) goto done;
         bmi = (BITMAPINFO *)ret;
         memset( bmi, 0, header_size );
-        bmi->bmiHeader.biSize        = header_size;
-        bmi->bmiHeader.biWidth       = bmp.bmWidth;
-        bmi->bmiHeader.biHeight      = bmp.bmHeight;
-        bmi->bmiHeader.biPlanes      = 1;
-        bmi->bmiHeader.biBitCount    = bmp.bmBitsPixel;
-        bmi->bmiHeader.biCompression = BI_RGB;
-        GetDIBits( hdc, data, 0, bmp.bmHeight, (char *)bmi + header_size, bmi, DIB_RGB_COLORS );
+        memcpy( bmi, &header, header.bV5Size );
+        GetDIBits( hdc, data, 0, abs(header.bV5Height), (char *)bmi + header_size, bmi, DIB_RGB_COLORS );
     }
     else
     {
+        SIZE_T size = GlobalSize( data );
+
+        if (size < sizeof(*bmi)) goto done;
         if (!(src = GlobalLock( data ))) goto done;
 
         src_size = bitmap_info_size( src, DIB_RGB_COLORS );
-        bits_size = GlobalSize( data ) - src_size;
+        if (size <= src_size)
+        {
+            GlobalUnlock( data );
+            goto done;
+        }
+        bits_size = size - src_size;
         header_size = (format == CF_DIBV5) ? sizeof(BITMAPV5HEADER) :
             offsetof( BITMAPINFO, bmiColors[src->bmiHeader.biCompression == BI_BITFIELDS ? 3 : 0] );
 
@@ -359,7 +584,7 @@ static HANDLE render_synthesized_format( UINT format, UINT from )
     HANDLE data = GetClipboardData( from );
 
     if (!data) return 0;
-    TRACE( "rendering %04x from %04x\n", format, from );
+    TRACE( "rendering %s from %s\n", debugstr_format( format ), debugstr_format( from ));
 
     switch (format)
     {
@@ -388,52 +613,35 @@ static HANDLE render_synthesized_format( UINT format, UINT from )
     }
     if (data)
     {
-        TRACE( "adding %04x %p\n", format, data );
+        TRACE( "adding %s %p\n", debugstr_format( format ), data );
         SetClipboardData( format, data );
     }
     return data;
 }
 
 /**************************************************************************
- *                      get_clipboard_flags
- */
-static UINT get_clipboard_flags(void)
-{
-    UINT ret = 0;
-
-    SERVER_START_REQ( set_clipboard_info )
-    {
-        if (!wine_server_call_err( req )) ret = reply->flags;
-    }
-    SERVER_END_REQ;
-
-    return ret;
-}
-
-
-/**************************************************************************
  *	CLIPBOARD_ReleaseOwner
  */
 void CLIPBOARD_ReleaseOwner( HWND hwnd )
 {
-    HWND viewer = 0;
+    HWND viewer = 0, owner = 0;
 
     SendMessageW( hwnd, WM_RENDERALLFORMATS, 0, 0 );
 
     SERVER_START_REQ( release_clipboard )
     {
         req->owner = wine_server_user_handle( hwnd );
-        if (!wine_server_call( req )) viewer = wine_server_ptr_handle( reply->viewer );
+        if (!wine_server_call( req ))
+        {
+            viewer = wine_server_ptr_handle( reply->viewer );
+            owner = wine_server_ptr_handle( reply->owner );
+        }
     }
     SERVER_END_REQ;
 
-    if (viewer) SendNotifyMessageW( viewer, WM_DRAWCLIPBOARD, (WPARAM)GetClipboardOwner(), 0 );
+    if (viewer) SendNotifyMessageW( viewer, WM_DRAWCLIPBOARD, (WPARAM)owner, 0 );
 }
 
-
-/**************************************************************************
- *                WIN32 Clipboard implementation
- **************************************************************************/
 
 /**************************************************************************
  *		RegisterClipboardFormatW (USER32.@)
@@ -456,20 +664,20 @@ UINT WINAPI RegisterClipboardFormatA( LPCSTR name )
 /**************************************************************************
  *		GetClipboardFormatNameW (USER32.@)
  */
-INT WINAPI GetClipboardFormatNameW(UINT wFormat, LPWSTR retStr, INT maxlen)
+INT WINAPI GetClipboardFormatNameW( UINT format, LPWSTR buffer, INT maxlen )
 {
-    if (wFormat < MAXINTATOM) return 0;
-    return GlobalGetAtomNameW( wFormat, retStr, maxlen );
+    if (format < MAXINTATOM || format > 0xffff) return 0;
+    return GlobalGetAtomNameW( format, buffer, maxlen );
 }
 
 
 /**************************************************************************
  *		GetClipboardFormatNameA (USER32.@)
  */
-INT WINAPI GetClipboardFormatNameA(UINT wFormat, LPSTR retStr, INT maxlen)
+INT WINAPI GetClipboardFormatNameA( UINT format, LPSTR buffer, INT maxlen )
 {
-    if (wFormat < MAXINTATOM) return 0;
-    return GlobalGetAtomNameA( wFormat, retStr, maxlen );
+    if (format < MAXINTATOM || format > 0xffff) return 0;
+    return GlobalGetAtomNameA( format, buffer, maxlen );
 }
 
 
@@ -479,23 +687,25 @@ INT WINAPI GetClipboardFormatNameA(UINT wFormat, LPSTR retStr, INT maxlen)
 BOOL WINAPI OpenClipboard( HWND hwnd )
 {
     BOOL ret;
+    HWND owner;
 
     TRACE( "%p\n", hwnd );
+
+    USER_Driver->pUpdateClipboard();
+
+    EnterCriticalSection( &clipboard_cs );
 
     SERVER_START_REQ( open_clipboard )
     {
         req->window = wine_server_user_handle( hwnd );
-        if ((ret = !wine_server_call_err( req )))
-        {
-            if (!reply->owner)
-            {
-                bCBHasChanged = FALSE;
-                memset( synthesized_formats, 0, sizeof(synthesized_formats) );
-            }
-        }
+        ret = !wine_server_call_err( req );
+        owner = wine_server_ptr_handle( reply->owner );
     }
     SERVER_END_REQ;
 
+    if (ret && !WIN_IsCurrentProcess( owner )) invalidate_memory_formats();
+
+    LeaveCriticalSection( &clipboard_cs );
     return ret;
 }
 
@@ -505,39 +715,23 @@ BOOL WINAPI OpenClipboard( HWND hwnd )
  */
 BOOL WINAPI CloseClipboard(void)
 {
-    HWND viewer = 0;
-    BOOL ret, owner = FALSE;
+    HWND viewer = 0, owner = 0;
+    BOOL ret;
 
-    TRACE("() Changed=%d\n", bCBHasChanged);
-
-    if (bCBHasChanged)
-    {
-        memset( synthesized_formats, 0, sizeof(synthesized_formats) );
-        add_synthesized_text();
-        add_synthesized_bitmap();
-        add_synthesized_metafile();
-    }
+    TRACE( "\n" );
 
     SERVER_START_REQ( close_clipboard )
     {
-        req->changed = bCBHasChanged;
         if ((ret = !wine_server_call_err( req )))
         {
             viewer = wine_server_ptr_handle( reply->viewer );
-            owner = reply->owner;
+            owner = wine_server_ptr_handle( reply->owner );
         }
     }
     SERVER_END_REQ;
 
-    if (!ret) return FALSE;
-
-    if (bCBHasChanged)
-    {
-        if (owner) USER_Driver->pEndClipboardUpdate();
-        bCBHasChanged = FALSE;
-    }
-    if (viewer) SendNotifyMessageW( viewer, WM_DRAWCLIPBOARD, (WPARAM)GetClipboardOwner(), 0 );
-    return TRUE;
+    if (viewer) SendNotifyMessageW( viewer, WM_DRAWCLIPBOARD, (WPARAM)owner, 0 );
+    return ret;
 }
 
 
@@ -550,9 +744,11 @@ BOOL WINAPI EmptyClipboard(void)
     BOOL ret;
     HWND owner = GetClipboardOwner();
 
-    TRACE("()\n");
+    TRACE( "owner %p\n", owner );
 
     if (owner) SendMessageTimeoutW( owner, WM_DESTROYCLIPBOARD, 0, 0, SMTO_ABORTIFHUNG, 5000, NULL );
+
+    EnterCriticalSection( &clipboard_cs );
 
     SERVER_START_REQ( empty_clipboard )
     {
@@ -560,19 +756,15 @@ BOOL WINAPI EmptyClipboard(void)
     }
     SERVER_END_REQ;
 
-    if (ret)
-    {
-        USER_Driver->pEmptyClipboard();
-        bCBHasChanged = TRUE;
-        memset( synthesized_formats, 0, sizeof(synthesized_formats) );
-    }
+    if (ret) free_cached_formats();
+
+    LeaveCriticalSection( &clipboard_cs );
     return ret;
 }
 
 
 /**************************************************************************
  *		GetClipboardOwner (USER32.@)
- *  FIXME: Can't return the owner if the clipboard is owned by an external X-app
  */
 HWND WINAPI GetClipboardOwner(void)
 {
@@ -584,7 +776,7 @@ HWND WINAPI GetClipboardOwner(void)
     }
     SERVER_END_REQ;
 
-    TRACE(" hWndOwner(%p)\n", hWndOwner);
+    TRACE( "returning %p\n", hWndOwner );
 
     return hWndOwner;
 }
@@ -603,7 +795,7 @@ HWND WINAPI GetOpenClipboardWindow(void)
     }
     SERVER_END_REQ;
 
-    TRACE(" hWndClipWindow(%p)\n", hWndOpen);
+    TRACE( "returning %p\n", hWndOpen );
 
     return hWndOpen;
 }
@@ -629,7 +821,7 @@ HWND WINAPI SetClipboardViewer( HWND hwnd )
 
     if (hwnd) SendNotifyMessageW( hwnd, WM_DRAWCLIPBOARD, (WPARAM)owner, 0 );
 
-    TRACE( "(%p): returning %p\n", hwnd, prev );
+    TRACE( "%p returning %p\n", hwnd, prev );
     return prev;
 }
 
@@ -647,7 +839,7 @@ HWND WINAPI GetClipboardViewer(void)
     }
     SERVER_END_REQ;
 
-    TRACE(" hWndViewer=%p\n", hWndViewer);
+    TRACE( "returning %p\n", hWndViewer );
 
     return hWndViewer;
 }
@@ -685,32 +877,55 @@ BOOL WINAPI ChangeClipboardChain( HWND hwnd, HWND next )
  */
 HANDLE WINAPI SetClipboardData( UINT format, HANDLE data )
 {
-    HANDLE hResult = 0;
-    UINT flags;
+    struct cached_format *cache = NULL;
+    void *ptr = NULL;
+    data_size_t size = 0;
+    HANDLE handle = data, retval = 0;
+    NTSTATUS status = STATUS_SUCCESS;
 
-    TRACE( "%04x %p\n", format, data );
+    TRACE( "%s %p\n", debugstr_format( format ), data );
 
-    if (!format)
+    if (data)
     {
-        SetLastError( ERROR_CLIPBOARD_NOT_OPEN );
-        return 0;
+        if (!(handle = marshal_data( format, data, &size ))) return 0;
+        if (!(ptr = GlobalLock( handle ))) goto done;
+        if (!(cache = HeapAlloc( GetProcessHeap(), 0, sizeof(*cache) ))) goto done;
+        cache->format = format;
+        cache->handle = data;
     }
 
-    flags = get_clipboard_flags();
-    if (!(flags & CB_OPEN_ANY))
-    {
-        SetLastError( ERROR_CLIPBOARD_NOT_OPEN );
-        return 0;
-    }
+    EnterCriticalSection( &clipboard_cs );
 
-    if (USER_Driver->pSetClipboardData( format, data, flags & CB_OWNER))
+    SERVER_START_REQ( set_clipboard_data )
     {
-        hResult = data;
-        bCBHasChanged = TRUE;
-        if (format < CF_MAX) synthesized_formats[format] = 0;
+        req->format = format;
+        req->lcid = GetUserDefaultLCID();
+        wine_server_add_data( req, ptr, size );
+        if (!(status = wine_server_call( req )))
+        {
+            if (cache) cache->seqno = reply->seqno;
+        }
     }
+    SERVER_END_REQ;
 
-    return hResult;
+    if (!status)
+    {
+        /* free the previous entry if any */
+        struct cached_format *prev;
+
+        if ((prev = get_cached_format( format ))) free_cached_data( prev );
+        if (cache) list_add_tail( &cached_formats, &cache->entry );
+        retval = data;
+    }
+    else HeapFree( GetProcessHeap(), 0, cache );
+
+    LeaveCriticalSection( &clipboard_cs );
+
+done:
+    if (ptr) GlobalUnlock( handle );
+    if (handle != data) GlobalFree( handle );
+    if (status) SetLastError( RtlNtStatusToDosError( status ));
+    return retval;
 }
 
 
@@ -719,7 +934,17 @@ HANDLE WINAPI SetClipboardData( UINT format, HANDLE data )
  */
 INT WINAPI CountClipboardFormats(void)
 {
-    INT count = USER_Driver->pCountClipboardFormats();
+    INT count = 0;
+
+    USER_Driver->pUpdateClipboard();
+
+    SERVER_START_REQ( get_clipboard_formats )
+    {
+        wine_server_call( req );
+        count = reply->count;
+    }
+    SERVER_END_REQ;
+
     TRACE("returning %d\n", count);
     return count;
 }
@@ -728,29 +953,45 @@ INT WINAPI CountClipboardFormats(void)
 /**************************************************************************
  *		EnumClipboardFormats (USER32.@)
  */
-UINT WINAPI EnumClipboardFormats(UINT wFormat)
+UINT WINAPI EnumClipboardFormats( UINT format )
 {
-    TRACE("(%04X)\n", wFormat);
+    UINT ret = 0;
 
-    if (!(get_clipboard_flags() & CB_OPEN))
+    SERVER_START_REQ( enum_clipboard_formats )
     {
-        WARN("Clipboard not opened by calling task.\n");
-        SetLastError(ERROR_CLIPBOARD_NOT_OPEN);
-        return 0;
+        req->previous = format;
+        if (!wine_server_call_err( req ))
+        {
+            ret = reply->format;
+            SetLastError( ERROR_SUCCESS );
+        }
     }
-    SetLastError( 0 );
-    return USER_Driver->pEnumClipboardFormats(wFormat);
+    SERVER_END_REQ;
+
+    TRACE( "%s -> %s\n", debugstr_format( format ), debugstr_format( ret ));
+    return ret;
 }
 
 
 /**************************************************************************
  *		IsClipboardFormatAvailable (USER32.@)
  */
-BOOL WINAPI IsClipboardFormatAvailable(UINT wFormat)
+BOOL WINAPI IsClipboardFormatAvailable( UINT format )
 {
-    BOOL bret = USER_Driver->pIsClipboardFormatAvailable(wFormat);
-    TRACE("%04x, returning %d\n", wFormat, bret);
-    return bret;
+    BOOL ret = FALSE;
+
+    if (!format) return FALSE;
+
+    USER_Driver->pUpdateClipboard();
+
+    SERVER_START_REQ( get_clipboard_formats )
+    {
+        req->format = format;
+        if (!wine_server_call_err( req )) ret = (reply->count > 0);
+    }
+    SERVER_END_REQ;
+    TRACE( "%s -> %u\n", debugstr_format( format ), ret );
+    return ret;
 }
 
 
@@ -759,28 +1000,27 @@ BOOL WINAPI IsClipboardFormatAvailable(UINT wFormat)
  */
 BOOL WINAPI GetUpdatedClipboardFormats( UINT *formats, UINT size, UINT *out_size )
 {
-    UINT i = 0, cf = 0;
+    BOOL ret;
 
     if (!out_size)
     {
         SetLastError( ERROR_NOACCESS );
         return FALSE;
     }
-    if (!(*out_size = CountClipboardFormats())) return TRUE;  /* nothing else to do */
 
-    if (!formats)
+    USER_Driver->pUpdateClipboard();
+
+    SERVER_START_REQ( get_clipboard_formats )
     {
-        SetLastError( ERROR_NOACCESS );
-        return FALSE;
+        if (formats) wine_server_set_reply( req, formats, size * sizeof(*formats) );
+        ret = !wine_server_call_err( req );
+        *out_size = reply->count;
     }
-    if (size < *out_size)
-    {
-        SetLastError( ERROR_INSUFFICIENT_BUFFER );
-        return FALSE;
-    }
-    /* FIXME: format list could change in the meantime */
-    while ((cf = USER_Driver->pEnumClipboardFormats( cf ))) formats[i++] = cf;
-    return TRUE;
+    SERVER_END_REQ;
+
+    TRACE( "%p %u returning %u formats, ret %u\n", formats, size, *out_size, ret );
+    if (!ret && !formats && *out_size) SetLastError( ERROR_NOACCESS );
+    return ret;
 }
 
 
@@ -789,23 +1029,69 @@ BOOL WINAPI GetUpdatedClipboardFormats( UINT *formats, UINT size, UINT *out_size
  */
 HANDLE WINAPI GetClipboardData( UINT format )
 {
-    HANDLE data = 0;
+    struct cached_format *cache;
+    NTSTATUS status;
+    UINT from, data_seqno;
+    HWND owner;
+    HANDLE data;
+    UINT size = 1024;
+    BOOL render = TRUE;
 
-    TRACE( "%04x\n", format );
-
-    if (!(get_clipboard_flags() & CB_OPEN))
+    for (;;)
     {
-        WARN("Clipboard not opened by calling task.\n");
-        SetLastError(ERROR_CLIPBOARD_NOT_OPEN);
+        if (!(data = GlobalAlloc( GMEM_FIXED, size ))) return 0;
+
+        EnterCriticalSection( &clipboard_cs );
+        cache = get_cached_format( format );
+
+        SERVER_START_REQ( get_clipboard_data )
+        {
+            req->format = format;
+            if (cache)
+            {
+                req->cached = 1;
+                req->seqno = cache->seqno;
+            }
+            wine_server_set_reply( req, data, size );
+            status = wine_server_call( req );
+            from = reply->from;
+            size = reply->total;
+            data_seqno = reply->seqno;
+            owner = wine_server_ptr_handle( reply->owner );
+        }
+        SERVER_END_REQ;
+
+        if (!status && size)
+        {
+            data = cache_data( format, data, size, data_seqno, cache );
+            LeaveCriticalSection( &clipboard_cs );
+            TRACE( "%s returning %p\n", debugstr_format( format ), data );
+            return data;
+        }
+        LeaveCriticalSection( &clipboard_cs );
+        GlobalFree( data );
+
+        if (status == STATUS_BUFFER_OVERFLOW) continue;  /* retry with the new size */
+        if (status)
+        {
+            SetLastError( RtlNtStatusToDosError( status ));
+            TRACE( "%s error %08x\n", debugstr_format( format ), status );
+            return 0;
+        }
+        if (render)  /* try rendering it */
+        {
+            render = FALSE;
+            if (owner)
+            {
+                TRACE( "%s sending WM_RENDERFORMAT to %p\n", debugstr_format( format ), owner );
+                SendMessageW( owner, WM_RENDERFORMAT, format, 0 );
+                continue;
+            }
+            if (from) return render_synthesized_format( format, from );
+        }
+        TRACE( "%s returning 0\n", debugstr_format( format ));
         return 0;
     }
-    if (format < CF_MAX && synthesized_formats[format])
-        data = render_synthesized_format( format, synthesized_formats[format] );
-    else
-        data = USER_Driver->pGetClipboardData( format );
-
-    TRACE( "returning %p\n", data );
-    return data;
 }
 
 
@@ -816,7 +1102,7 @@ INT WINAPI GetPriorityClipboardFormat(UINT *list, INT nCount)
 {
     int i;
 
-    TRACE("()\n");
+    TRACE( "%p %u\n", list, nCount );
 
     if(CountClipboardFormats() == 0)
         return 0;
@@ -831,11 +1117,6 @@ INT WINAPI GetPriorityClipboardFormat(UINT *list, INT nCount)
 
 /**************************************************************************
  *		GetClipboardSequenceNumber (USER32.@)
- * Supported on Win2k/Win98
- * MSDN: Windows clipboard code keeps a serial number for the clipboard
- * for each window station.  The number is incremented whenever the
- * contents change or are emptied.
- * If you do not have WINSTA_ACCESSCLIPBOARD then the function returns 0
  */
 DWORD WINAPI GetClipboardSequenceNumber(VOID)
 {
@@ -847,7 +1128,7 @@ DWORD WINAPI GetClipboardSequenceNumber(VOID)
     }
     SERVER_END_REQ;
 
-    TRACE("returning %x\n", seqno);
+    TRACE( "returning %u\n", seqno );
     return seqno;
 }
 

@@ -125,7 +125,7 @@
 @ stdcall WsReadValue(ptr long ptr long ptr)
 @ stub WsReadXmlBuffer
 @ stub WsReadXmlBufferFromBytes
-@ stub WsReceiveMessage
+@ stdcall WsReceiveMessage(ptr ptr ptr long long long ptr ptr long ptr ptr ptr)
 @ stub WsRegisterOperationForCancel
 @ stdcall WsRemoveCustomHeader(ptr ptr ptr ptr)
 @ stdcall WsRemoveHeader(ptr long ptr)
@@ -143,7 +143,7 @@
 @ stub WsResetServiceProxy
 @ stub WsRevokeSecurityContext
 @ stub WsSendFaultMessageForError
-@ stub WsSendMessage
+@ stdcall WsSendMessage(ptr ptr ptr long ptr long ptr ptr)
 @ stub WsSendReplyMessage
 @ stdcall WsSetChannelProperty(ptr long ptr long ptr)
 @ stdcall WsSetErrorProperty(ptr long ptr long)
@@ -164,7 +164,7 @@
 @ stub WsStartWriterCanonicalization
 @ stub WsTrimXmlWhitespace
 @ stub WsVerifyXmlNCName
-@ stub WsWriteArray
+@ stdcall WsWriteArray(ptr ptr ptr long ptr long long long ptr)
 @ stdcall WsWriteAttribute(ptr ptr long ptr long ptr)
 @ stdcall WsWriteBody(ptr ptr long ptr long ptr)
 @ stub WsWriteBytes

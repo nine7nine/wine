@@ -30,6 +30,23 @@
 #define BITS_N1_0 0xbf800000
 #define BITS_1_0  0x3f800000
 
+struct format_support
+{
+    DXGI_FORMAT format;
+    BOOL optional;
+};
+
+static const struct format_support display_format_support[] =
+{
+    {DXGI_FORMAT_R8G8B8A8_UNORM},
+    {DXGI_FORMAT_R8G8B8A8_UNORM_SRGB},
+    {DXGI_FORMAT_B8G8R8A8_UNORM,             TRUE},
+    {DXGI_FORMAT_B8G8R8A8_UNORM_SRGB,        TRUE},
+    {DXGI_FORMAT_R16G16B16A16_FLOAT},
+    {DXGI_FORMAT_R10G10B10A2_UNORM},
+    {DXGI_FORMAT_R10G10B10_XR_BIAS_A2_UNORM, TRUE},
+};
+
 struct vec2
 {
     float x, y;
@@ -7258,6 +7275,73 @@ float4 main(const ps_in v) : SV_TARGET
     release_test_context(&test_context);
 }
 
+static void test_swapchain_formats(void)
+{
+    DXGI_SWAP_CHAIN_DESC swapchain_desc;
+    IDXGISwapChain *swapchain;
+    IDXGIDevice *dxgi_device;
+    IDXGIAdapter *adapter;
+    IDXGIFactory *factory;
+    ID3D10Device *device;
+    unsigned int i;
+    ULONG refcount;
+    HRESULT hr;
+
+    if (!(device = create_device()))
+    {
+        skip("Failed to create device.\n");
+        return;
+    }
+
+    swapchain_desc.BufferDesc.Width = 800;
+    swapchain_desc.BufferDesc.Height = 600;
+    swapchain_desc.BufferDesc.RefreshRate.Numerator = 0;
+    swapchain_desc.BufferDesc.RefreshRate.Denominator = 0;
+    swapchain_desc.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
+    swapchain_desc.BufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
+    swapchain_desc.SampleDesc.Count = 1;
+    swapchain_desc.SampleDesc.Quality = 0;
+    swapchain_desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    swapchain_desc.BufferCount = 1;
+    swapchain_desc.OutputWindow = CreateWindowA("static", "d3d10core_test", 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    swapchain_desc.Windowed = TRUE;
+    swapchain_desc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+    swapchain_desc.Flags = 0;
+
+    hr = ID3D10Device_QueryInterface(device, &IID_IDXGIDevice, (void **)&dxgi_device);
+    ok(SUCCEEDED(hr), "Failed to query IDXGIDevice, hr %#x.\n", hr);
+    hr = IDXGIDevice_GetAdapter(dxgi_device, &adapter);
+    ok(SUCCEEDED(hr), "GetAdapter failed, hr %#x.\n", hr);
+    IDXGIDevice_Release(dxgi_device);
+    hr = IDXGIAdapter_GetParent(adapter, &IID_IDXGIFactory, (void **)&factory);
+    ok(SUCCEEDED(hr), "GetParent failed, hr %#x.\n", hr);
+    IDXGIAdapter_Release(adapter);
+
+    swapchain_desc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_TYPELESS;
+    hr = IDXGIFactory_CreateSwapChain(factory, (IUnknown *)device, &swapchain_desc, &swapchain);
+    todo_wine ok(hr == E_INVALIDARG, "Got unexpected hr %#x for typeless format.\n", hr);
+    if (SUCCEEDED(hr))
+        IDXGISwapChain_Release(swapchain);
+
+    for (i = 0; i < sizeof(display_format_support) / sizeof(*display_format_support); ++i)
+    {
+        if (display_format_support[i].optional)
+            continue;
+
+        swapchain_desc.BufferDesc.Format = display_format_support[i].format;
+        hr = IDXGIFactory_CreateSwapChain(factory, (IUnknown *)device, &swapchain_desc, &swapchain);
+        ok(hr == S_OK, "Got unexpected hr %#x for format %#x.\n", hr, display_format_support[i].format);
+        refcount = IDXGISwapChain_Release(swapchain);
+        ok(!refcount, "Swapchain has %u references left.\n", refcount);
+    }
+
+    refcount = ID3D10Device_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
+    refcount = IDXGIFactory_Release(factory);
+    ok(!refcount, "Factory has %u references left.\n", refcount);
+    DestroyWindow(swapchain_desc.OutputWindow);
+}
+
 static void test_swapchain_views(void)
 {
     struct d3d10core_test_context test_context;
@@ -9372,6 +9456,76 @@ static void test_line_antialiasing_blending(void)
     release_test_context(&test_context);
 }
 
+static void check_format_support(const unsigned int *format_support,
+        const struct format_support *formats, unsigned int format_count,
+        unsigned int feature_flag, const char *feature_name)
+{
+    unsigned int i;
+
+    for (i = 0; i < format_count; ++i)
+    {
+        DXGI_FORMAT format = formats[i].format;
+        unsigned int supported = format_support[format] & feature_flag;
+
+        if (formats[i].optional)
+        {
+            if (supported)
+                trace("Optional format %#x - %s supported.\n", format, feature_name);
+            continue;
+        }
+
+        ok(supported, "Format %#x - %s supported, format support %#x.\n",
+                format, feature_name, format_support[format]);
+    }
+}
+
+static void test_required_format_support(void)
+{
+    unsigned int format_support[DXGI_FORMAT_B4G4R4A4_UNORM + 1];
+    ID3D10Device *device;
+    DXGI_FORMAT format;
+    ULONG refcount;
+    HRESULT hr;
+
+    static const struct format_support index_buffers[] =
+    {
+        {DXGI_FORMAT_R32_UINT},
+        {DXGI_FORMAT_R16_UINT},
+    };
+
+    if (!(device = create_device()))
+    {
+        skip("Failed to create device.\n");
+        return;
+    }
+
+    memset(format_support, 0, sizeof(format_support));
+    for (format = DXGI_FORMAT_UNKNOWN; format <= DXGI_FORMAT_B4G4R4A4_UNORM; ++format)
+    {
+        hr = ID3D10Device_CheckFormatSupport(device, format, &format_support[format]);
+        todo_wine ok(hr == S_OK || (hr == E_FAIL && !format_support[format]),
+                "Got unexpected result for format %#x: hr %#x, format_support %#x.\n",
+                format, hr, format_support[format]);
+    }
+    if (hr == E_NOTIMPL)
+    {
+        skip("CheckFormatSupport not implemented.\n");
+        ID3D10Device_Release(device);
+        return;
+    }
+
+    check_format_support(format_support, index_buffers,
+            sizeof(index_buffers) / sizeof(*index_buffers),
+            D3D10_FORMAT_SUPPORT_IA_INDEX_BUFFER, "index buffer");
+
+    check_format_support(format_support, display_format_support,
+            sizeof(display_format_support) / sizeof(*display_format_support),
+            D3D10_FORMAT_SUPPORT_DISPLAY, "display");
+
+    refcount = ID3D10Device_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
+}
+
 START_TEST(device)
 {
     test_feature_level();
@@ -9407,6 +9561,7 @@ START_TEST(device)
     test_texture_data_init();
     test_check_multisample_quality_levels();
     test_cb_relative_addressing();
+    test_swapchain_formats();
     test_swapchain_views();
     test_swapchain_flip();
     test_clear_render_target_view();
@@ -9424,4 +9579,5 @@ START_TEST(device)
     test_index_buffer_offset();
     test_face_culling();
     test_line_antialiasing_blending();
+    test_required_format_support();
 }
